@@ -77,22 +77,7 @@ Skip this scan for `type = remote-mcp`. No source files ship in the bundle — o
 
 **For `type = skill`:**
 
-1. Locate `package_skill.py` using this probe order; use the first hit:
-   - `$ANTHROPIC_SKILLS_DIR/package_skill.py`
-   - `command -v package_skill.py` (PATH)
-   - `/Applications/Warp.app/Contents/Resources/bundled/skills/create-skill/scripts/package_skill.py`
-
-   If none found: `BLOCKED: package_skill.py not found. Set ANTHROPIC_SKILLS_DIR, install the Warp bundled create-skill scripts, or add it to PATH.`
-
-2. Locate `quick_validate.py` in the same directory as `package_skill.py`.
-
-3. Run validation:
-   ```bash
-   cd <dir-containing-package_skill.py> && python3 quick_validate.py <source_dir>
-   ```
-   If exit ≠ 0: `BLOCKED: skill validation failed: <first line of stderr/stdout>`.
-
-4. Confirm `python3` is on PATH: `command -v python3`. If missing: `BLOCKED: python3 is required. Install via brew or your system package manager.`
+No tooling probe needed. `package_skill.py` and its dependencies are bundled locally in this agent's `scripts/` directory, and `pyyaml` is pre-installed in `.venv/`. No separate validation step — `package_skill.py` runs `quick_validate.py` internally and exits non-zero on failure.
 
 **For `type = local-mcp`:**
 
@@ -119,8 +104,9 @@ Skip this scan for `type = remote-mcp`. No source files ship in the bundle — o
 #### 3a. Skill build
 
 ```bash
+AGENT_DIR=/Users/guy-ravid/Projects/ai/agents/anthropic-resource-packager
 mkdir -p <output_dir>
-python3 <package_skill_path> <source_dir> <output_dir>
+cd "$AGENT_DIR" && PYTHONPATH=. .venv/bin/python3 scripts/package_skill.py <source_dir> <output_dir>
 ```
 
 Capture stdout. The script emits a line containing the output path on success. If the command exits non-zero or does not emit a path, return `BLOCKED: skill packaging failed: <last 5 lines of output>`.
@@ -311,9 +297,7 @@ Never return both `PACKAGED` and `BLOCKED`. Never include build logs longer than
 | `source_dir <path> not found` | 0 | Pass an absolute path to an existing directory |
 | `could not detect resource type` | 1 | Pass `type_override=skill\|local-mcp\|remote-mcp` |
 | `secret-like file(s) detected: <paths>` | 2 | Remove files or add to `.gitignore` |
-| `package_skill.py not found` | 2 | Set `ANTHROPIC_SKILLS_DIR`, install Warp bundled scripts, or add to PATH |
-| `python3 is required` | 2 | `brew install python` |
-| `skill validation failed: <line>` | 2 | Fix `SKILL.md` frontmatter per `quick_validate.py` rules |
+| `skill packaging failed: <line>` | 3 | Fix `SKILL.md` frontmatter (name, description required; kebab-case name; no `<>` in description) |
 | `mcpb CLI not installed` | 2 | `npm install -g @anthropic-ai/mcpb` |
 | `manifest.json not found` | 2 | Run `mcpb init` in `<source_dir>` then re-invoke |
 | `manifest.json missing required field: <field>` | 2 | Edit `manifest.json` to add the field |

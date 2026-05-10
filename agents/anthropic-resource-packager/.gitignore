@@ -1,0 +1,3 @@
+# Machine-local environment — see README for setup instructions
+.venv/
+scripts/
