@@ -1,0 +1,16 @@
+# TODO: understand this file better
+name = "tunehop"
+main = "src/index.ts"
+compatibility_date = "2026-05-08"
+compatibility_flags = ["nodejs_compat"]
+
+[[durable_objects.bindings]]
+name = "MCP_OBJECT"
+class_name = "TuneHopMCP"
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["TuneHopMCP"]
+
+[observability]
+enabled = true
