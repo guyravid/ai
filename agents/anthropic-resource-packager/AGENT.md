@@ -81,6 +81,23 @@ No tooling probe needed. `package_skill.py` and its dependencies are bundled loc
 
 **For `type = local-mcp`:**
 
+**0. Read `<source_dir>/CLAUDE.md` if present (do this before any other step):**
+
+```bash
+test -f <source_dir>/CLAUDE.md && cat <source_dir>/CLAUDE.md
+```
+
+If it exists, extract:
+- Any documented **build command** (e.g. `npm run build`, `npx tsc`) — treat as a required pre-stage step; run it inside the stage after copying source.
+- Any documented **start command** or `claude mcp add` snippet — use as the authoritative `mcp_config.command`/`args` override in `manifest.json`.
+- All env var names listed under a `## Required env vars` heading (look for `- VARNAME` bullets) — verify each without reading the file value:
+  ```bash
+  grep -q '^VARNAME=.\+' <source_dir>/.env 2>/dev/null || echo MISSING
+  ```
+  If any required var is absent from both the process environment and `<source_dir>/.env`, return `BLOCKED: missing env: <NAMES>`.
+
+All values extracted from `CLAUDE.md` take precedence over anything inferred from `package.json` or source inspection.
+
 1. Confirm `mcpb` is on PATH: `command -v mcpb`. If missing: `BLOCKED: mcpb CLI not installed. Run: npm install -g @anthropic-ai/mcpb`
 
 2. Read `<source_dir>/manifest.json`. Confirm it parses as valid JSON and contains all required fields: `name`, `version`, `server.type`, `server.entry_point`, `mcp_config.command`. If `manifest.json` is missing: `BLOCKED: manifest.json not found. Run 'mcpb init' in <source_dir> first, then re-invoke this agent.` If any required field is absent: `BLOCKED: manifest.json missing required field: <field>`.
@@ -90,6 +107,10 @@ No tooling probe needed. `package_skill.py` and its dependencies are bundled loc
 4. If `server.type == "python"`: confirm `uv` or `pip` is on PATH.
 
 **For `type = remote-mcp`:**
+
+**0. Read `<source_dir>/CLAUDE.md` if present (do this before any other step):**
+
+Same as local-mcp step 0: read the file, extract env var names from `## Required env vars`, and verify each with `grep -q`. Any env var names found should be appended to the Option B `.mcp.json` snippet generated in Phase 3c as `"env": { "<VARNAME>": "" }` placeholders so installers know what to configure.
 
 1. Confirm `mcpb` is on PATH (same check as local-mcp).
 
@@ -287,6 +308,7 @@ Never return both `PACKAGED` and `BLOCKED`. Never include build logs longer than
 - **Never ship secrets.** Refuse to package if secret-like files are detected anywhere in `<source_dir>` (excluding `node_modules/`, `.git/`, `.venv/`, `dist/`). The remote-mcp path also strips `.env*` from the stage as defense-in-depth.
 - **For local MCPs, require an existing `manifest.json`.** Never generate one. The synthetic manifest is allowed only in the remote-mcp shim path, where the agent fully owns the stage.
 - **No network calls** beyond what `npm ci`, `pip install`, or `mcpb pack` initiate internally. Do not pre-flight the remote URL.
+- **If `CLAUDE.md` prescribes a build or run step the agent cannot execute** (requires network access, mutates source, or prompts interactively), BLOCK rather than skip or guess.
 
 ---
 
