@@ -1,39 +1,37 @@
 # migrate-skills
 
-A Claude Code skill for migrating or symlinking skills from a shared source into a Claude skills directory.
+A Claude Code skill for migrating or linking Claude resources — skills, agents, and MCP servers — from a shared source into your Claude configuration.
 
 ## What it does
 
-This skill walks you through installing skills from a shared repo (or any directory) into your Claude setup. It supports:
+Point it at a root directory (e.g., a team repo) and it finds, confirms, and migrates all three resource types in one pass:
 
-- **Symlinking** — recommended for shared repos; source updates apply automatically
-- **Copying** — standalone copies that you own and control
-- **Selective migration** — pick individual skills or migrate all at once
-- **Three install targets** — global (`/.claude/skills/`), user (`~/.claude/skills/`), or project (`.claude/skills/` at git root)
-- **Conflict handling** — detects existing skills (linked or copied), diffs them, and lets you decide how to proceed
-- **Cloud account sync** (opt-in) — compares local skills with your Anthropic cloud account and surfaces discrepancies
+- **Skills** — detected by `SKILL.md`; installed as a directory (symlink or copy) under `~/.claude/skills/`
+- **Agents** — detected by `AGENT.md`; installed as a single `.md` file under `~/.claude/agents/`
+- **MCPs** — detected by directory name (contains "mcp"); registered via `claude mcp add` with user confirmation
+- **Conflict handling** — detects existing resources (linked or copied), diffs them, and lets you decide how to proceed
+- **Three install scopes** — global, user, or project for skills and agents; user or project scope for MCP registration
+- **Cloud account sync** (opt-in, skills only) — compares local skills with your Anthropic cloud account and surfaces discrepancies
 
 ## How to use it
-
-Invoke it in Claude Code:
 
 ```
 /migrate-skills
 ```
 
-Or just describe what you want:
+Or describe what you want:
 
-> "Migrate the skills from this repo into my Claude setup"
-> "Install the team skills from ~/eng/shared-skills"
+> "Migrate everything from this repo into my Claude setup"
+> "Install the team skills and agents from ~/eng/shared-claude"
 > "Check if my local skills are up to date with the source repo"
 
-The skill will guide you through the rest interactively.
+The skill discovers all candidates, asks you to confirm (especially for MCPs), then guides you through the rest.
 
 ## Installation
 
-To install this skill into your own Claude setup, run `/migrate-skills` from this repo — it will find itself and walk you through the install.
+To install this skill itself, run `/migrate-skills` from this repo — it will find and walk you through the install.
 
-Alternatively, copy or symlink the `migrate-skills/` directory into your Claude skills directory:
+Or manually:
 
 ```bash
 # Symlink (recommended)

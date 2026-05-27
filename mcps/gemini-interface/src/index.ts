@@ -23,7 +23,7 @@ if (!GEMINI_API_KEY) {
 
 const server = new Server(
   {
-    name: "gemini-mcp",
+    name: "gemini-interface",
     version: "1.0.0",
   },
   {

@@ -1,4 +1,4 @@
-# gemini-mcp
+# gemini-interface
 
 A local [Model Context Protocol](https://modelcontextprotocol.io) (MCP) server that exposes Google Gemini capabilities — media transcription, text chat, and model discovery — to Claude Code and Claude Desktop over stdio. Built with `@google/genai` and the MCP SDK.
 
@@ -56,9 +56,9 @@ npm run build
 
 # 4. Register with Claude Code
 # Use npm start (runs pre-built dist/):
-claude mcp add gemini-mcp -- npm start --prefix /Users/guy-ravid/Projects/ai/mcps/gemini-mcp
+claude mcp add gemini-interface -- npm start --prefix /Users/guy-ravid/Projects/ai/mcps/gemini-interface
 # Or use start:build to compile before every server spawn:
-claude mcp add gemini-mcp -- npm run start:build --prefix /Users/guy-ravid/Projects/ai/mcps/gemini-mcp
+claude mcp add gemini-interface -- npm run start:build --prefix /Users/guy-ravid/Projects/ai/mcps/gemini-interface
 ```
 
 Verify the server is registered:
