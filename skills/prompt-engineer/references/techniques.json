@@ -1,0 +1,83 @@
+[
+  {
+    "id": 1,
+    "name": "Role + Goal + Format",
+    "summary": "Open with who Claude is, what it's trying to achieve, and how the output should be structured.",
+    "when": "Always apply on build-from-scratch. On refine, apply when the prompt lacks any of the three components (role, goal, format).",
+    "weak_example": "Help me write a marketing email.",
+    "strong_example": "You are a direct-response copywriter. Your goal is to write a cold email that gets a reply within 48 hours. Format: subject line, 3 short paragraphs, one CTA.",
+    "why": "Giving Claude a clear identity, objective, and output shape eliminates ambiguity and produces dramatically more focused output."
+  },
+  {
+    "id": 2,
+    "name": "Targeted Negative Constraints",
+    "summary": "Add explicit exclusions for known failure modes — unwanted patterns the user has already seen or can predict. Pair them with positive instructions, don't replace them.",
+    "when": "Apply when the user has experienced (or can reliably predict) a specific unwanted pattern in outputs: hedging, bullet-point overuse, generic summaries. Pair each exclusion with the positive alternative where possible ('no bullet points — write in flowing prose'). Avoid blanket negative fencing: positive specificity is the primary lever, and recent Claude models follow instructions literally, so broad 'do not' lists can cause overcorrection.",
+    "weak_example": "Give me your recommendation.",
+    "strong_example": "Don't hedge with phrases like 'it depends' — commit to one recommendation. No bullet points; write in flowing prose. Skip the survey of options and go straight to your pick and why.",
+    "why": "Targeted exclusions are high-leverage when they name a failure mode the model would otherwise drift into. They work best paired with the positive behavior you want — narrowing the output space without inviting overcorrection."
+  },
+  {
+    "id": 3,
+    "name": "Thinking Out Loud Prefix",
+    "summary": "Add a line before complex tasks that forces Claude to reason before answering.",
+    "when": "Apply when the task involves judgment, analysis, recommendations, or any situation where a confident wrong answer is worse than a slower right one. Less impactful when the target model has extended thinking enabled — it already reasons before answering. Highest value for API calls without thinking, or non-thinking models.",
+    "weak_example": "What framework should I use for this project?",
+    "strong_example": "Before you answer, think through the key variables, competing considerations, and what information would change your recommendation. Then give me your recommendation.",
+    "why": "This single line reduces confident wrong answers significantly by forcing reasoning before output. It activates deeper analysis rather than pattern-matched responses."
+  },
+  {
+    "id": 4,
+    "name": "Staged Prompting",
+    "summary": "Break complex tasks into sequential stages (Analyze → Draft → Critique → Refine) rather than asking for everything in one shot.",
+    "when": "Apply when the task is multi-faceted — writing with research, analysis with recommendations, any output that benefits from self-review. Skip for simple, single-focus tasks.",
+    "weak_example": "Write me a business plan for a coffee shop.",
+    "strong_example": "Stage 1: Analyze the competitive landscape for specialty coffee in downtown Austin. Stage 2: Draft the executive summary and financial projections. Stage 3: Critique your own draft — identify the weakest assumptions. Stage 4: Revise based on your critique.",
+    "why": "Each stage builds on the last. The final output from staged prompting is not comparable to a single-shot attempt because self-critique catches errors and weak reasoning."
+  },
+  {
+    "id": 5,
+    "name": "Specify the Reader",
+    "summary": "Define who will read the output — not just the topic, but the person, their background, and their context.",
+    "when": "Apply whenever the output will be read by someone specific (or a specific type of person). Especially high-impact for explanations, persuasive writing, and recommendations.",
+    "weak_example": "Explain machine learning.",
+    "strong_example": "Explain machine learning to a VP of Sales who has zero technical background but needs to make a $200K software decision next week.",
+    "why": "Claude writes for whoever is reading. A real person with real stakes produces a completely different tone, depth, and framing than a generic topic request."
+  },
+  {
+    "id": 6,
+    "name": "Steel Man the Counter",
+    "summary": "After getting a recommendation, ask Claude for the strongest possible argument against it.",
+    "when": "Apply when the user is making a decision, evaluating options, or needs to stress-test a position. Also useful when the user explicitly wants balanced analysis. In the Build path, embed it as a closing instruction inside the prompt itself; as a standalone follow-up message, it works when refining a live conversation.",
+    "weak_example": "Is this a good idea?",
+    "strong_example": "After you give your recommendation, present the strongest possible argument against it. What would a smart skeptic say?",
+    "why": "You get both sides stress-tested in one conversation. This prevents confirmation bias and surfaces risks the initial recommendation may have glossed over."
+  },
+  {
+    "id": 7,
+    "name": "XML Structure for Complex Inputs",
+    "summary": "Wrap multi-part inputs in XML tags (<context>, <task>, <constraints>) to sharpen Claude's attention.",
+    "when": "Apply when the prompt involves long documents, multiple data sources, or multi-part instructions that could blur together without structure.",
+    "weak_example": "Here's some background info and also here's what I want you to do and by the way keep it under 500 words.",
+    "strong_example": "<context>Q3 sales data showing 12% decline in enterprise segment</context>\n<task>Write an internal memo explaining the decline and proposing 3 corrective actions</task>\n<constraints>Keep under 500 words. No jargon. Audience is the board.</constraints>",
+    "why": "Claude's attention sharpens when inputs are structurally separated. XML tags prevent context from bleeding into task instructions and vice versa."
+  },
+  {
+    "id": 8,
+    "name": "Surgical Revision",
+    "summary": "Instead of 'make it better,' target the single weakest element and ask for a specific rewrite with reasoning.",
+    "when": "Apply during refinement passes. Especially useful when the user says 'improve this' or 'make it better' without specifics.",
+    "weak_example": "Make this better.",
+    "strong_example": "Identify the single weakest sentence in this piece and rewrite only that sentence. Then tell me why it was the weakest.",
+    "why": "Specific revision targets produce specific improvements. 'Make it better' produces generic polishing. Surgical prompts produce surgical results."
+  },
+  {
+    "id": 9,
+    "name": "Show, Don't Tell",
+    "summary": "Include 1-3 concrete examples of the desired output directly in the prompt, wrapped in <example> tags.",
+    "when": "Apply when output quality depends on format, tone, style, or structure that's hard to describe in words. Among the highest-leverage techniques in Anthropic's own guidance. Recent Claude models closely replicate the conventions in provided examples — formatting, naming, punctuation — so make every detail of the example match what you want.",
+    "weak_example": "Write product descriptions in our brand voice.",
+    "strong_example": "Write product descriptions in our brand voice. Here's one that nails it: <example>Meet the Birch Side Table. Solid wood, no veneer, no fuss. Assembles in four minutes — we timed it.</example> Match this length, rhythm, and directness.",
+    "why": "Examples show rather than tell. They communicate subtle requirements that paragraphs of description can't, and they enforce consistent structure and style across outputs."
+  }
+]
