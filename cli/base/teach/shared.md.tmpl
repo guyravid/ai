@@ -1,0 +1,181 @@
+{{/*
+  `teach contract` — everything shared by every tool under the Agent CLI Contract.
+
+  Vendored unchanged into each tool and compiled into the binary. Edit it here and re-vendor;
+  a drift test in each tool fails if its copy differs from this one.
+
+  Template data:
+    .Tool .ToolVersion .Contract .Prefix
+    .HasDatasets .WritesEnabled .MCPEnabled   booleans for this build
+    .Example.Name .Example.Argv               a real list command from this tool's registry
+
+  Every command this page names must exist in the tool (contract §6.3), so examples come from
+  .Example, never from hard-coded names.
+*/ -}}
+# The Agent CLI Contract, as used by `{{ .Tool }}`
+
+Everything on this page is the same for every tool built to Agent CLI Contract {{ .Contract }}. Read
+it once and it applies to all of them. For this tool specifically, run `{{ .Tool }} teach`.
+
+## Calling a tool
+
+- One call does one thing and prints **one JSON document** to stdout, including on failure.
+- **Check the exit code first.** It tells you what happened before you read anything.
+- Commands have dotted names that map onto the command line: `{{ .Example.Name }}` is
+  `{{ .Tool }} {{ .Example.Argv }}`.
+- Nothing is interactive. There are no prompts, colours, or progress output.
+
+## Reading the response
+
+```json
+{"ok":true,"tool":"{{ .Tool }}","command":"{{ .Example.Name }}","data":[…],"meta":{"page":{…},"contract_version":"{{ .Contract }}","tool_version":"{{ .ToolVersion }}"}}
+```
+
+- `ok` says whether it worked. Branch on it.
+- `data` is an array for lists, an object for one item, `null` on failure.
+- `meta.page` tells you where you are in a list (see Paging).
+- `meta.warnings` lists things worth knowing that are not failures. Read it.
+- `meta.window` shows the time range actually searched. If `source` is `default`, the tool chose it,
+  and older results may exist.
+
+An empty list is a success, not "not found".
+
+## When it fails
+
+```json
+{"ok":false,…,"error":{"code":"not_found","exit_code":5,"message":"…","retriable":false,"hint":"…"}}
+```
+
+`hint` is usually a command you can run as-is. `retriable` means trying again later may work; it
+does not mean retry immediately.
+
+| Exit | Code | What to do |
+|---|---|---|
+| 1 | `internal` | A bug in the tool. Stop and report it |
+| 2 | `usage` | Your command line is wrong. Read `hint` and `details.did_you_mean` |
+| 3 | `config` | The tool is misconfigured. The operator must fix it; run `{{ .Tool }} doctor` to see what |
+| 4 | `auth` | A credential is missing or rejected. The operator must fix it; run `{{ .Tool }} doctor` |
+| 5 | `not_found` | The thing does not exist, or you cannot see it |
+| 6 | `validation` | Upstream rejected what you sent. Fix the values |
+| 7 | `conflict` | It changed underneath you. Read it again, then decide |
+| 8 | `refused` | The tool declined: usually a write without `--confirm`. `details.reason` says why |
+| 9 | `rate_limited` | Wait `retry_after_ms`, then retry |
+| 10 | `timeout` | Retry with a smaller request. For a write, check first whether it happened |
+| 11 | `network` | Could not reach upstream. Run `{{ .Tool }} doctor` |
+| 12 | `upstream` | Upstream failed. Retry later |
+| 13 | `partial` | You got some of the data; `meta.errors` says what is missing |
+| 14 | `cache_miss` | A stored dataset expired. Re-run the query in `hint` |
+| 130, 143 | `canceled` | The call was interrupted |
+
+Codes 32–63 are specific to a tool and listed by `describe`.
+
+## Finding your way around
+
+| Question | Command |
+|---|---|
+| What can this tool do? | `tools` (names only, cheapest) |
+| What does each command do? | `tools --detail` |
+| How exactly do I call one? | `describe <name>` |
+| How do I use this tool well? | `teach`, then `teach --list` |
+| Is it set up correctly? | `doctor` |
+| What is it configured as, and why? | `list-config` |
+
+Go only as deep as you need. `describe` with no name returns every schema, which is large.
+
+## Getting less output
+
+Output costs context, so every tool starts small and lets you ask for more.
+
+| Control | Default | Use it to |
+|---|---|---|
+| `--fields a,b,c` | a short default set | Get only the fields you need, in that order |
+| `--fields -desc` | | Drop fields from the default set |
+| `--fields '*'` | | Get everything (large) |
+| `--limit N` | 25 | Get more or fewer records |
+| `--since`, `--until` | last 24 hours | Search a different time range |
+| `--max-bytes`, `--max-string` | 32 KB, 2048 chars | Allow larger output when you really need it |
+| `--keep-empty` | empty values removed | See fields that are empty rather than absent |
+
+Time formats: `-2h`, `-7d`, `2026-09-30`, `2026-09-30T14:00:00+02:00`, epoch seconds or
+milliseconds, and `now` for `--until`. A date-time without a timezone is rejected on purpose.
+
+If a value was cut short, its path is in `meta.elided_fields`.
+
+## Paging
+
+The tool pages through upstream for you: ask for `--limit 60` and you get 60 in one call.
+
+```json
+"page":{"limit":60,"count":60,"total":214,"total_is_exact":true,"has_more":true,"next_cursor":"…","truncated":false}
+```
+
+To continue, pass `next_cursor` back **on its own**:
+
+```
+{{ .Tool }} {{ .Example.Argv }} --cursor <next_cursor>
+```
+
+The cursor already carries your original parameters. Stop when `has_more` is `false`.
+
+If `truncated` is `true`, the tool hit a size or page cap before reaching your limit;
+`truncated_reason` says which. You lose nothing: `next_cursor` resumes exactly where it stopped.
+{{ if .HasDatasets }}
+## Getting everything: datasets
+
+When you know you want the whole result set, add `--all`. The tool fetches all of it once, in as few
+upstream calls as it can, stores it on disk, and returns the first part plus a handle:
+
+```json
+"dataset":{"id":"…","path":"/…/datasets/….jsonl","record_count":4213,"complete":true,"ttl_seconds":3600,"read_hint":"{{ .Tool }} dataset read … --offset 25 --limit 100"}
+```
+
+Then any of:
+
+- `{{ .Tool }} dataset read <id> --cursor <next_cursor>` — the next part, no upstream calls.
+- `{{ .Tool }} dataset read <id> --offset 2000 --limit 50` — any slice.
+- Read `path` directly: it is JSON Lines, one record per line, already trimmed to your `--fields`.
+
+`dataset list`, `dataset stat <id>`, `dataset rm <id>`, and `dataset clear --confirm` manage them.
+
+A dataset expires `ttl_seconds` after you last read it. If `complete` is `false`, a cap stopped the
+collection early and it is not the whole set.
+{{ end }}
+## Writes
+
+{{- if .WritesEnabled }}
+
+Anything that changes upstream starts with `write`: `{{ .Tool }} write <group> <verb> …`.
+
+- Without `--confirm`, a write is **refused** and shows you exactly the request it would have sent.
+- `--dry-run` shows the request without sending it, on any command.
+- A write that times out is never retried automatically. Check whether it happened before trying
+  again.
+{{- else }}
+
+This build is **read-only**. Commands starting with `write` do not exist.
+{{- end }}
+
+## Credentials and configuration
+
+- Credentials live in the tool's environment, never in your commands. The tool refuses
+  `--api-key`, `--token`, and similar flags, and treats any key passed that way as leaked.
+- You never need to see a credential. `doctor` tells you whether it works; `list-config` tells you
+  where it comes from.
+- Settings come, in order of priority, from: a flag; `{{ .Prefix }}_<SETTING>_<PROFILE>`;
+  `{{ .Prefix }}_<SETTING>`; the config file's active profile; the config file's `default`
+  section; `AGENTCLI_<SETTING>`; the built-in default.
+- `--profile <name>` changes only the settings that profile defines. Everything else stays as it was.
+
+`{{ .Tool }} teach config` covers all of it in detail, including an example config file.
+
+## Human-readable output
+
+Add `--human` to any command for a table or plain text instead of JSON. It is meant for a person
+reading a terminal; do not parse it. The exit code is the same either way.
+{{ if .MCPEnabled }}
+## As an MCP server
+
+`{{ .Tool }} serve` offers the same commands as MCP tools, with the same arguments and the same JSON
+in each result. Flags become arguments with underscores: `--max-bytes` is `max_bytes`. Writes take
+`confirm` and `dry_run` arguments.
+{{ end -}}

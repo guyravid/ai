@@ -1,0 +1,59 @@
+{{/*
+  Bare `teach` — the orientation. The first call an agent makes against an unfamiliar tool.
+
+  Keep the rendered output under 4 KB; a test in each tool measures it. It must not list every
+  command, repeat flag tables, or reproduce `describe`.
+
+  Generated parts come from the registry. The author supplies only .Domain:
+    .Domain.Summary    two or three sentences: what this wraps and what it is for
+    .Domain.Common     []{Question, Command} — the handful of commands that answer most questions
+    .Domain.Traps      []string — facts a first-time caller would otherwise get wrong
+
+  Other data: .Tool .Contract .HasDatasets .WritesEnabled
+*/ -}}
+# {{ .Tool }}
+
+{{ .Domain.Summary }}
+
+This tool follows the Agent CLI Contract {{ .Contract }}. Everything shared by every tool under that
+contract — the response format, error codes, paging, datasets, writes, configuration — is in
+**`{{ .Tool }} teach contract`**. Read it once if you have not met this family of tools before.
+
+## Start here
+
+| To answer | Run |
+|---|---|
+{{- range .Domain.Common }}
+| {{ .Question }} | `{{ $.Tool }} {{ .Command }}` |
+{{- end }}
+
+## Worth knowing first
+
+{{ range .Domain.Traps -}}
+- {{ . }}
+{{ end }}
+## Commands every tool in this family has
+
+| Command | Answers |
+|---|---|
+| `tools` | What can this tool do? (names only) |
+| `describe <name>` | Exactly how do I call this command? |
+| `teach contract` | How do all tools in this family behave? |
+| `teach --list` | What else can `teach` explain? |
+| `doctor` | Is this tool set up and working? Run it on any `auth`, `config`, or `network` error |
+| `list-config` | What is it configured as, and where did each value come from? |
+{{- if .HasDatasets }}
+| `dataset read <id>` | Give me more of a result I collected with `--all` |
+{{- end }}
+
+## Where next
+
+- `{{ .Tool }} teach contract` — the shared rules, in one read.
+- `{{ .Tool }} tools` — every command.
+- `{{ .Tool }} describe <name>` — one command's full schema.
+- `{{ .Tool }} teach flags` and `{{ .Tool }} teach config` — every flag and every setting.
+- `{{ .Tool }} teach --list` — other topics.
+{{- if not .WritesEnabled }}
+
+This build is read-only.
+{{- end }}
