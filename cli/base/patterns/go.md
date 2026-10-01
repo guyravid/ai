@@ -55,8 +55,10 @@ Generic entries do not share a type, so the registry stores an interface, and ea
 that captures its concrete types and exposes `Definition()`, `RunCLI(args)`, and `Register(*mcp.Server)`
 (the last only in `mcp` builds).
 
-Read-only builds exclude writes at compile time: put `write.*` registrations in a file with
-`//go:build !readonly`. The commands are then absent from the binary, not merely hidden.
+Read-only builds exclude writes at compile time: put the mutating registrations in a file with
+`//go:build !readonly`. The commands are then absent from the binary, not merely hidden. Keep a plain
+`[]string` of their names in an untagged file, so the read-only build can still refuse them with
+`writes_disabled`.
 
 ## 4. Envelope [§4]
 

@@ -55,12 +55,14 @@ Map each operation using `references/tool-mapping.md`, and confirm the table wit
 | Name | Command line | Parameters | Returns | Paged | Collectable | Time window | Writes |
 |---|---|---|---|---|---|---|---|
 | `cards.list` | `cards list` | `board` (required), `list` | card[] | yes | yes | no | no |
-| `write.cards.create` | `write cards create` | `list`, `name` (required) | card | no | no | no | yes |
+| `cards.create` | `cards create` | `list`, `name` (required) | card | no | no | no | yes |
 
 Fixed by the contract:
 
 - Names are dotted, `<group>.<verb>`; the command line is the name split on dots.
-- **Every mutating command starts with `write`**, and nothing else may.
+- **Every mutating command is declared mutating** and refuses to run without `--confirm`. A `write`
+  name prefix is optional; if used, only mutating commands may carry it. Ask the user whether they
+  want it: it lets prefix-matching permission rules separate reads from writes.
 - Reserved group names and flags (contract §17) are unavailable.
 - Every list command gets a declared `sort` with a unique tiebreak, a default and maximum `--limit`,
   and a default field set of the few fields an agent needs most.
@@ -212,7 +214,7 @@ needs nothing; a remote listener needs `--allow-remote`, a token, and either a c
 | Orientation size | `<binary> teach \| wc -c` | under 4096 |
 | Orientation points onward | `<binary> teach \| grep 'teach contract'` | a match |
 | Secret flag refused | `<binary> cards list --api-key x` | exit 8, `secret_on_argv`, `x` not echoed |
-| Write gated | `<binary> write cards create …` | exit 8, `preview` present |
+| Write gated | `<binary> cards create …` (a mutating command) | exit 8, `preview` present |
 | Inline credential rejected | credential value in the config file | exit 3, value not echoed |
 | Provenance | `<binary> list-config` | exact variable names or file keys as `source` |
 | `--human` keeps the exit code | `<binary> cards get missing --human; echo $?` | 5 |

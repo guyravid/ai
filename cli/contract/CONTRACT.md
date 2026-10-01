@@ -1,6 +1,6 @@
 # Agent CLI Contract
 
-**Contract version `1.0`**
+**Contract version `1.1`**
 
 A conforming tool is a command-line binary that gives an automated agent access to one remote API.
 This document says what such a tool does and why. How to build one is in
@@ -40,8 +40,9 @@ Every rule in this document traces back to one of these.
   step. A bare failure leads an agent to retry blindly or invent a workaround.
 - **A4 — The command line is public.** Arguments are kept in shell history, transcripts, process
   listings, and hook logs. No secret is ever passed there.
-- **A5 — Reads and writes are told apart by prefix.** Agent permission rules match on the start of a
-  command line, so the shape of a command decides what a rule can allow.
+- **A5 — Writes are declared and confirmed.** Every command that changes upstream state says so in
+  discovery, and never runs without `--confirm`. An agent learns what a command does from the tool,
+  not from guessing at its name.
 - **A6 — The binary describes itself.** Everything an agent needs to use the tool is available from
   the tool. External documentation drifts; the binary cannot drift from itself.
 
@@ -71,7 +72,7 @@ The tool:
 Every command except those listed in §2.1 returns an envelope.
 
 ```json
-{"ok":true,"tool":"trello","command":"cards.list","data":[{"id":"91bc","name":"Fix paging","list":"Doing"}],"meta":{"page":{"limit":25,"count":1,"total":1,"total_is_exact":true,"has_more":false,"next_cursor":null,"truncated":false},"fields":["id","name","list"],"stripped_empty":true,"sort":"dateLastActivity desc, id asc","contract_version":"1.0","tool_version":"0.3.0"}}
+{"ok":true,"tool":"trello","command":"cards.list","data":[{"id":"91bc","name":"Fix paging","list":"Doing"}],"meta":{"page":{"limit":25,"count":1,"total":1,"total_is_exact":true,"has_more":false,"next_cursor":null,"truncated":false},"fields":["id","name","list"],"stripped_empty":true,"sort":"dateLastActivity desc, id asc","contract_version":"1.1","tool_version":"0.3.0"}}
 ```
 
 | Member | Rule |
@@ -114,7 +115,7 @@ context the agent rarely needs.
 ### §3.3 Failure
 
 ```json
-{"ok":false,"tool":"trello","command":"cards.get","data":null,"error":{"code":"not_found","exit_code":5,"message":"No card with id 91zz is visible to this token.","retriable":false,"hint":"trello cards.list --board <board-id> --limit 20","details":{"id":"91zz","upstream_status":404}},"meta":{"contract_version":"1.0","tool_version":"0.3.0"}}
+{"ok":false,"tool":"trello","command":"cards.get","data":null,"error":{"code":"not_found","exit_code":5,"message":"No card with id 91zz is visible to this token.","retriable":false,"hint":"trello cards list --board <board-id> --limit 20","details":{"id":"91zz","upstream_status":404}},"meta":{"contract_version":"1.1","tool_version":"0.3.0"}}
 ```
 
 | Member | Rule |
@@ -181,12 +182,13 @@ name split on dots:
 |---|---|
 | `cards.list` | `trello cards list` |
 | `boards.get` | `trello boards get <id>` |
-| `write.cards.create` | `trello write cards create …` |
+| `cards.create` | `trello cards create …` |
 
 Rules:
 
 1. Each segment matches `[a-z][a-z0-9-]*`. Domain commands have at least two segments.
-2. Every command that changes upstream state MUST start with `write` (§11.1). No other command may.
+2. Every command that changes upstream state MUST be declared mutating (§11.1). A name MAY start with
+   `write`; a command whose name starts with `write` MUST be mutating.
 3. The first segment MUST NOT be a reserved name (§17).
 
 *Why dotted names:* they are valid MCP tool names, contain no spaces, and map to the command line
@@ -216,12 +218,12 @@ complete or fails. *Why:* a truncated list silently hides that a command exists.
 including the contract-provided ones (`serve` only when server mode is built):
 
 ```json
-{"ok":true,"tool":"trello","command":"tools","data":["boards.get","boards.list","cards.get","cards.list","dataset.clear","dataset.list","dataset.read","dataset.rm","dataset.stat","describe","doctor","list-config","teach","tools","version","write.cards.create"],"meta":{"contract_version":"1.0","tool_version":"0.3.0"}}
+{"ok":true,"tool":"trello","command":"tools","data":["boards.get","boards.list","cards.create","cards.get","cards.list","dataset.clear","dataset.list","dataset.read","dataset.rm","dataset.stat","describe","doctor","list-config","teach","tools","version"],"meta":{"contract_version":"1.1","tool_version":"0.3.0"}}
 ```
 
 `tools --detail` returns `[{name, description, mutates}]`. Each `description` MUST be one line of at
 most 160 characters, with no flags, examples, or field lists. `mutates` MUST be `true` exactly when
-the name starts with `write.`.
+the command changes upstream state (§11.1).
 
 `tools --detail` SHOULD stay under 8 KB. Exceeding it suggests the command surface needs review.
 
@@ -232,7 +234,7 @@ narrowed to one command. An unknown name is a `usage` error with `did_you_mean`.
 
 ```json
 {"ok":true,"tool":"trello","command":"describe","data":{
-  "tool":"trello","tool_version":"0.3.0","contract_version":"1.0",
+  "tool":"trello","tool_version":"0.3.0","contract_version":"1.1",
   "writes_enabled":true,"mcp_enabled":false,
   "auth":{"credentials":[{"name":"API_KEY","env":"TRELLO_API_KEY"},{"name":"API_TOKEN","env":"TRELLO_API_TOKEN"}]},
   "exit_codes":[{"code":32,"name":"board_archived","retriable":false,"meaning":"The board is archived and read-only"}],
@@ -243,10 +245,10 @@ narrowed to one command. An unknown name is a `usage` error with `did_you_mean`.
     "annotations":{"readOnlyHint":true,"idempotentHint":true,"openWorldHint":true},
     "inputSchema":{"type":"object","additionalProperties":false,
       "properties":{"board":{"type":"string","description":"Board id"},
-                    "list":{"type":"string","description":"Only cards in this list"}},
+                    "list_id":{"type":"string","description":"Only cards in this list"}},
       "required":["board"]},
     "outputSchema":{"type":"array","items":{"type":"object","properties":{"id":{"type":"string"},"name":{"type":"string"}}}},
-    "x-cli":{"flags":{"board":"--board","list":"--list"},"positional":[],"paged":true,"collectable":true,"time_window":false,
+    "x-cli":{"flags":{"board":"--board","list_id":"--list-id"},"positional":[],"paged":true,"collectable":true,"time_window":false,
              "errors":["usage","auth","not_found","rate_limited","network","upstream"]},
     "fields":{"default":["id","name","list"],"available":["id","name","list","desc","due","labels","members","url","dateLastActivity"]},
     "sort":"dateLastActivity desc, id asc",
@@ -264,7 +266,7 @@ publish the same entries unchanged.
 |---|---|
 | `argv` | The command line path |
 | `outputSchema` | Constrains `data` only, never the whole envelope |
-| `annotations.readOnlyHint` | `true` exactly when the name does not start with `write.` |
+| `annotations.readOnlyHint` | `true` exactly when the command is not mutating; always the opposite of `mutates` in `tools --detail` |
 | `x-cli.flags` | Maps each parameter to its flag |
 | `x-cli.positional` | Parameters given by position, in order |
 | `x-cli.paged` | Whether the command returns a list (§9) |
@@ -381,7 +383,7 @@ contact upstream, and it MUST succeed with nothing configured.
   {"name":"API_KEY","value":null,"set":true,"source":"TRELLO_API_KEY_WORK","origin":"env_profile","default":null},
   {"name":"API_TOKEN","value":null,"set":false,"source":"builtin","origin":"builtin","default":null,
    "hint":"Set TRELLO_API_TOKEN, or TRELLO_API_TOKEN_FILE=<path to a file holding the token>, or api_token_file=<path> in the config file"}
-]},"meta":{"contract_version":"1.0","tool_version":"0.3.0"}}
+]},"meta":{"contract_version":"1.1","tool_version":"0.3.0"}}
 ```
 
 | Member | Rule |
@@ -610,26 +612,33 @@ An unknown or expired `<id>` is `cache_miss`, with a hint naming the query to re
 `--fields` on `dataset read` can only narrow what was stored. Asking for a field the dataset does not
 hold is a `usage` error listing what it does hold.
 
-The `dataset` group does not use the `write` prefix: it changes only local files, not upstream.
+Dataset commands are not mutating: they change only local files, not upstream.
 
 ## §11 Writes
 
-### §11.1 The `write` prefix
+### §11.1 Declaring writes
 
-Every command that changes upstream state MUST start with `write`:
+Every command that changes upstream state MUST be declared mutating: `mutates:true` in
+`tools --detail`, `readOnlyHint:false` in `describe` (§6). Its name follows the same rules as any
+other command:
 
 ```
-trello cards list --board 5f2a                                             # read
-trello write cards create --list 61a0 --name "Fix paging" --confirm        # write
+trello cards list --board 5f2a                                       # read
+trello cards create --list-id 61a0 --name "Fix paging" --confirm     # write
 ```
 
-*Why:* permission rules match on the start of the command line (A5). With the prefix, one rule allows
-every read and none of the writes. With the verb at the end, allowing reads would mean listing every
-read command, and any new write under an existing group would slip through.
+A name MAY start with `write` (`trello write cards create …`). If it does, the command MUST be
+mutating, so the prefix never misleads.
+
+*Why:* the declaration is where both an agent and an MCP client look, and `--confirm` (§11.2) gates
+every run whatever the command is called. The cost: a permission rule that matches only the start
+of a command line cannot tell reads from writes when names carry no prefix. Where reads and writes
+must be separated by something other than `--confirm`, use a read-only build (§11.3), or deny each
+mutating command by name.
 
 ### §11.2 `--confirm` and `--dry-run`
 
-- A `write` command MUST refuse to run without `--confirm`: exit `refused`, and `error.details.preview`
+- A mutating command MUST refuse to run without `--confirm`: exit `refused`, and `error.details.preview`
   MUST show the exact request the tool was about to make — `{method, url, headers, body}`, with
   header values redacted.
 - Every command MUST accept `--dry-run`. It sends no mutating request, returns `ok:true` with the
@@ -640,8 +649,10 @@ read command, and any new write under an existing group would slip through.
 
 A tool MAY be built without writes. In such a build:
 
-- No `write.*` command appears in `tools`, `describe`, `teach`, or the server's tool list.
-- Any `write` command line is `refused`, with `details.reason:"writes_disabled"`.
+- No mutating command appears in `tools`, `describe`, `teach`, or the server's tool list.
+- A command line naming a mutating command is `refused`, with `details.reason:"writes_disabled"`. The
+  tool still recognises the names of its mutating commands for this purpose. *Why:* "not built" and
+  "not a command" call for different responses from the caller.
 - `describe`, `doctor`, `version`, and the server's health endpoint report `writes_enabled:false`.
 
 ### §11.4 Retrying writes
@@ -912,7 +923,7 @@ trello serve --transport http --addr 0.0.0.0:7810 --allow-remote \
 ### §16.2 Tools over MCP
 
 - The server's tool list comes from the same definitions as `describe`, and names, parameters, and
-  types MUST match it exactly. A read-only build lists no `write.*` tools.
+  types MUST match it exactly. A read-only build lists no mutating tools.
 - `teach` is offered as a tool. `tools` and `describe` are not; the protocol's own tool listing
   replaces them.
 - Every per-call flag in §17 is accepted as a tool argument, named as the flag without its leading
@@ -920,7 +931,7 @@ trello serve --transport http --addr 0.0.0.0:7810 --allow-remote \
 - A tool call returns the same envelope the equivalent command line would, both as structured content
   and as one text block, with `isError` equal to `!ok`. `error.exit_code` stays in the envelope, so §4
   still applies without a process exit.
-- A `write.*` tool takes a `confirm` boolean and a `dry_run` boolean. Without `confirm` it behaves as
+- A mutating tool takes a `confirm` boolean and a `dry_run` boolean. Without `confirm` it behaves as
   §11.2: refused, with a preview, and nothing sent.
 - `initialize` and the tool list MUST work with no configuration and no credential.
 - Timeouts and budgets apply per call, not to the server's lifetime.
@@ -929,9 +940,9 @@ trello serve --transport http --addr 0.0.0.0:7810 --allow-remote \
   address, whether writes are enabled, and whether HTTP authentication is on. Neither line may
   contain a secret.
 
-*Why read-only builds matter here:* agent permission rules that match command-line prefixes (§11.1)
-never see an MCP call. Whatever the client allows goes through, so a read-only build is the only
-write protection that survives the change of transport.
+*Why read-only builds matter here:* agent permission rules written for the command line never see an
+MCP call. Whatever the client allows goes through, so a read-only build is the only write protection
+that survives the change of transport.
 
 ### §16.3 Over HTTP
 
@@ -970,7 +981,8 @@ On loopback, TLS is optional: plaintext there never crosses a network.
 ## §17 Reserved names
 
 These command names are reserved, and a tool MUST NOT use them as a group name: `tools`, `describe`,
-`teach`, `doctor`, `list-config`, `dataset`, `serve`, `version`, `write`, `help`.
+`teach`, `doctor`, `list-config`, `dataset`, `serve`, `version`, `write`, `help`. `write` may appear
+only as the optional first segment of a mutating command (§11.1).
 
 These flags are reserved. Every tool MUST implement those that apply to it with exactly this meaning,
 and MUST NOT use any of them for anything else:

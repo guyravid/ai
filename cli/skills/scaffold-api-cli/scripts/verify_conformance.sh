@@ -181,12 +181,15 @@ else
   bad "C5-2" "a describe entry's argv does not match its name"
 fi
 
-if jq -e '[.data[] | .mutates == (.name | startswith("write."))] | all' "$WORK/out/detail.json" >/dev/null 2>&1 &&
-   jq -e '[.data.commands[] | .annotations.readOnlyHint == (.name | startswith("write.") | not)] | all' \
+# C5-3: readOnlyHint is the opposite of mutates, and the optional write prefix is only on mutating commands.
+if jq -e '[.data[] | (.mutates | type == "boolean") and ((.name | startswith("write.") | not) or .mutates)] | all' \
+     "$WORK/out/detail.json" >/dev/null 2>&1 &&
+   jq -e --slurpfile d "$WORK/out/detail.json" '($d[0].data | map({(.name): .mutates}) | add) as $m
+      | [.data.commands[] | .annotations.readOnlyHint == ($m[.name] | not)] | all' \
      "$WORK/out/describe.json" >/dev/null 2>&1; then
-  ok "C5-3" "mutates and readOnlyHint agree with the write prefix"
+  ok "C5-3" "readOnlyHint is the opposite of mutates; write-prefixed names are mutating"
 else
-  bad "C5-3" "mutates or readOnlyHint disagrees with the write prefix"
+  bad "C5-3" "readOnlyHint and mutates disagree, or a write-prefixed command is not mutating"
 fi
 
 if jq -e --arg c "$CONTRACT_CMDS" --arg r "$RESERVED" '[.data[] | select(test($c) | not)
@@ -378,7 +381,7 @@ else
   skip "C10-6" "no dataset commands in this build"
 fi
 
-WRITE=$(jq -r '[.data[] | select(startswith("write."))][0] // empty' "$WORK/out/tools.json")
+WRITE=$(jq -r '[.data[] | select(.mutates) | .name][0] // empty' "$WORK/out/detail.json")
 if [ -n "$WRITE" ]; then
   # Build an argv that satisfies every required parameter with a dummy value.
   WARGS=()

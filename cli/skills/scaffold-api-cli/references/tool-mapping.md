@@ -12,19 +12,20 @@ Dotted, `<group>.<verb>`. The command line is the name split on dots.
 | `GET /boards/{id}` | `boards.get` | `trello boards get <id>` |
 | `GET /boards/{id}/cards` | `cards.list` | `trello cards list --board <id>` |
 | `GET /boards/{id}/actions` | `actions.list` | `trello actions list --board <id> --since -2h` |
-| `POST /cards` | `write.cards.create` | `trello write cards create … --confirm` |
-| `PUT /cards/{id}` with `idList` | `write.cards.move` | `trello write cards move <id> --list <id> --confirm` |
-| `DELETE /cards/{id}` | `write.cards.delete` | `trello write cards delete <id> --confirm` |
+| `POST /cards` | `cards.create` | `trello cards create … --confirm` |
+| `PUT /cards/{id}` with `idList` | `cards.move` | `trello cards move <id> --list-id <id> --confirm` |
+| `DELETE /cards/{id}` | `cards.delete` | `trello cards delete <id> --confirm` |
 
 - **The group is the thing returned, not the first path segment.** `GET /boards/{id}/cards` returns
   cards, so it is `cards.list`, and all card commands sort together in `tools`.
 - Verbs: `list` for collections, `get` for one by id, `search` for a query, `count` where the API can
   count cheaply. Writes: `create`, `update`, `delete`, or a specific action such as `move`.
-- **Anything that changes upstream starts with `write`.** Check every POST, PUT, PATCH, and DELETE;
-  and check GETs too, since some APIs perform actions on GET.
+- **Anything that changes upstream is declared mutating** and gated by `--confirm`. Check every
+  POST, PUT, PATCH, and DELETE; and check GETs too, since some APIs perform actions on GET. A `write`
+  name prefix (`write.cards.create`) is optional; if the tool uses it, only mutating commands carry it.
 - Segments are lowercase letters, digits, and hyphens. No group may be a reserved name: `tools`,
   `describe`, `teach`, `doctor`, `list-config`, `dataset`, `serve`, `version`, `write` (other than as
-  the write prefix), `help`.
+  the optional prefix of a mutating command), `help`.
 
 ## From an OpenAPI operation
 
@@ -38,7 +39,7 @@ Dotted, `<group>.<verb>`. The command line is the name split on dots.
 | Response schema | The output type; `outputSchema` is derived from it |
 | Response is an array | `paged`, and usually `collectable` |
 | A time-based filter exists (`since`, `before`, `after`) | `time_window`, mapped to `--since` / `--until` |
-| Method is not GET/HEAD | `write.` prefix, `readOnlyHint:false`, and `destructiveHint` for deletions |
+| Method is not GET/HEAD | Mutating: `mutates:true`, `readOnlyHint:false`, `destructiveHint` for deletions |
 
 Rewrite descriptions rather than truncating them. An OpenAPI description cut at 160 characters
 usually ends mid-sentence and makes `tools --detail` look broken.

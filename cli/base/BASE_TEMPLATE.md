@@ -61,6 +61,7 @@ Command {
   Input        typed parameter struct  # inputSchema is derived from it
   Output       typed result struct     # outputSchema is derived from it
   Flags        param -> flag           # plus positional order
+  Mutates      bool                    # changes upstream; drives mutates, readOnly, --confirm
   Annotations  readOnly, idempotent, openWorld, destructive
   Paged        bool
   Collectable  bool                    # implies Paged
@@ -92,14 +93,16 @@ a type, generate the type from the schema instead.
 
 - a name does not match `[a-z][a-z0-9-]*` per segment, or a domain command has one segment;
 - a name starts with a reserved word, or two names collide;
-- `readOnly` is `true` on a `write.*` command or `false` on any other;
+- `readOnly` is not the opposite of `Mutates`, or a name starting with `write` is not mutating;
 - a flag collides with a reserved flag, or a credential-shaped flag is declared;
 - `Collectable` is set without `Paged`, or `TimeWindow` is set on a non-list command;
 - an error code falls outside the contract's set and the declared tool-specific range;
 - a `teach` topic is named `contract`, `flags`, or `config`.
 
-**Read-only builds** exclude `write.*` entries from the registry at build time, not at runtime. The
-commands then do not exist in the binary, so no bug can reach them.
+**Read-only builds** exclude mutating entries from the registry at build time, not at runtime. The
+commands then do not exist in the binary, so no bug can reach them. Keep a names-only list of the
+mutating commands, compiled into every build, so a read-only build can answer a command line naming
+one with `refused` and `writes_disabled` rather than `usage`.
 
 ## §3 Handlers
 
@@ -456,8 +459,10 @@ which reads correctly in a terminal and in a captured log alike.
 
 ## §13 Writes
 
-- The `write` prefix is part of the command name, so the registry and argv parser need no special
-  case: `write.cards.create` becomes `write cards create`.
+- Whether a command writes is a registry field (`Mutates`), not something parsed from its name. The
+  name maps to argv like any other: `cards.create` becomes `cards create`, and an optional `write`
+  prefix (`write.cards.create`) is just another segment.
+- Derive `mutates`, `readOnlyHint`, and where `--confirm` applies from that one field.
 - Build the outbound request first, then decide: without `--confirm`, return it as the preview; with
   `--dry-run`, return it as `data.preview`; otherwise send it. Building the request before deciding
   guarantees the preview is exactly what would be sent.

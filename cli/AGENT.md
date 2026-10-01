@@ -69,8 +69,8 @@ Recommendations for an agent calling one of these tools.
   than paging through upstream by hand.
 - Check `meta.window.source`. When it says `default`, the tool searched only the last 24 hours.
 - Read `meta.warnings`, and treat `meta.page.truncated` as "more exists", not as an error.
-- Writes need `--confirm`. Run once without it to see the exact request in the refusal's preview,
-  then confirm.
+- Writes need `--confirm`. `tools --detail` marks which commands write (`mutates`). Run once without
+  `--confirm` to see the exact request in the refusal's preview, then confirm.
 - `--human` is for a person at a terminal. Leave it off when parsing.
 - There is no reason to pass a credential as an argument; a conforming tool refuses it and treats the
   credential as leaked.
@@ -141,8 +141,11 @@ data at rest; place the directory where that is acceptable.
   `--tls-terminated-upstream` instead. It is a statement about your deployment the tool cannot
   check, so use it only where the hop from the proxy to the tool really is private.
 - Serve a **read-only build** whenever the server is reachable by anything other than a trusted
-  local agent. Agent permission rules that match command-line prefixes never see MCP calls, so a
+  local agent. Agent permission rules written for the command line never see MCP calls, so a
   read-only build is the only write protection that survives the transport.
+- Command names do not have to show whether they write (contract 1.1), so a permission rule that
+  matches only the start of a command line cannot tell reads from writes. Where that separation
+  matters, deploy the read-only build, or deny each mutating command listed by `tools --detail`.
 
 **Smoke test.** Run `doctor` after every deployment change. It is the cheapest confirmation that
 credentials, network, permissions, clock, and the dataset directory are all right.

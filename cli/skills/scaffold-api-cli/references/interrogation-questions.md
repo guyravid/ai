@@ -31,9 +31,9 @@ names. If the user pastes a real credential, tell them to rotate it.
     API offers.
 11. For each: method, path, required and optional parameters.
 12. For each: a real success response. A real example beats a description.
-13. Which operations change data? Each becomes a `write.*` command and needs explicit confirmation to
-    include.
-14. Do any GET requests have side effects? They would also need the `write` prefix.
+13. Which operations change data? Each becomes a mutating command and needs explicit confirmation to
+    include. Should mutating commands also carry the optional `write` name prefix?
+14. Do any GET requests have side effects? They would also need to be declared mutating.
 15. Are any operations slow, expensive, or rate-limited more strictly than the rest?
 
 ## Shaping

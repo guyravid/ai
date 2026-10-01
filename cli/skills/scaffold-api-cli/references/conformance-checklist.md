@@ -48,8 +48,8 @@ tool's own test suite.
 - **C5-1** auto — Every name in `tools` has lowercase dotted segments; domain commands have at least
   two.
 - **C5-2** auto — Every `describe` entry's `argv` equals its name split on dots.
-- **C5-3** auto — `mutates` in `tools --detail` and `readOnlyHint` in `describe` both agree with
-  whether the name starts with `write.`.
+- **C5-3** auto — `readOnlyHint` in `describe` is the opposite of `mutates` in `tools --detail` for
+  every command, and every name starting with `write.` is mutating.
 - **C5-4** auto — No domain command's first segment is a reserved name.
 
 ## §6 Discovery
@@ -130,11 +130,11 @@ tool's own test suite.
 
 ## §11 Writes
 
-- **C11-1** auto — A `write.*` command without `--confirm` is `refused`, exit 8, with
+- **C11-1** auto — A mutating command without `--confirm` is `refused`, exit 8, with
   `details.preview`. (Skipped when the build has no writes.)
 - **C11-2** manual — That refusal, and `--dry-run`, send zero requests upstream.
-- **C11-3** manual — A read-only build has no `write.*` in `tools`, `describe`, `teach`, or the MCP
-  tool list, and refuses a `write` command line with `writes_disabled`.
+- **C11-3** manual — A read-only build has no mutating command in `tools`, `describe`, `teach`, or the
+  MCP tool list, and refuses a command line naming one with `writes_disabled`.
 - **C11-4** manual — A timed-out write is not retried and reports `write_state:"unknown"`.
 
 ## §12 Secrets
