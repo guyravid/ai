@@ -55,7 +55,7 @@ the contract wins.
       "type": "object",
       "required": ["contract_version", "tool_version"],
       "properties": {
-        "contract_version": { "type": "string", "pattern": "^\\d+\\.\\d+$" },
+        "contract_version": { "type": "string", "pattern": "^\\d+\\.\\d+(\\.\\d+)?$" },
         "tool_version": { "type": "string" },
         "page": { "$ref": "agentcli/page.json" },
         "window": {
@@ -362,6 +362,32 @@ values from lower tiers instead of reverting to defaults. That is per-setting in
 
 For credentials, `source` names the variable or file, never the value.
 
+A profile-scoped credential (contract §12.1, since 1.4.2) with profile `work` selected, where only the
+default scope has a source. The entry is `set:false`, and the hint names the skipped source:
+
+```json
+{"name":"API_KEY","value":null,"set":false,"source":"builtin","origin":"builtin","default":null,
+ "hint":"Profile 'work' has no API key of its own; TRELLO_API_KEY is skipped for a profile. Set TRELLO_API_KEY_FILE_WORK=<path>, or profiles.work.api_key_file=<path> in the config file"}
+```
+
+With a profile-scope source, the entry looks like any other credential row, for example
+`"source":"config.json#profiles.work.api_key_file","origin":"file_profile"`.
+
+### `describe` `auth`
+
+A tool that declares a profile-scoped credential marks it; other entries omit the member:
+
+```json
+"auth":{"credentials":[{"name":"BOT_TOKEN","env":"TELEGRAM_BOT_TOKEN","profile_scoped":true}]}
+```
+
+The matching failure, a selected profile with nothing in its own scope while the default scope has a
+source (`config`, exit 3):
+
+```json
+{"ok":false,"tool":"telegram","command":"messages.send","data":null,"error":{"code":"config","exit_code":3,"message":"Profile 'builds' has no bot token of its own and would use the default bot's.","retriable":false,"hint":"Set profiles.builds.bot_token_file in the config file, or TELEGRAM_BOT_TOKEN_FILE_BUILDS","details":{"profile":"builds","would_use_source":"TELEGRAM_BOT_TOKEN"}},"meta":"…"}
+```
+
 ### `list-config --schema`
 
 ```json
@@ -375,6 +401,7 @@ For credentials, `source` names the variable or file, never the value.
                 "additionalProperties":{"$ref":"#/$defs/settings"}}
   },
   "$defs":{"settings":{"type":"object","additionalProperties":false,"properties":{
+    "description":{"type":"string","minLength":1,"maxLength":200,"pattern":"^[^\\r\\n]*$","description":"One line saying what this profile is for. Read only by list-profiles."},
     "limit":{"type":"integer","minimum":1},
     "timeout":{"type":"string","pattern":"^[0-9]+(ms|s|m|h)$"},
     "dataset_ttl":{"type":"string","pattern":"^[0-9]+(s|m|h|d)$"},
@@ -387,6 +414,24 @@ For credentials, `source` names the variable or file, never the value.
 ```
 
 There is no `api_key` property, only `api_key_file`. A file that validates cannot hold a credential.
+
+The `description` property appears only in a tool that supports profile descriptions (contract §13.4
+rule 6). The schema cannot express "not empty after trimming", so the tool checks that itself.
+
+### `list-profiles`
+
+A tool that supports profile descriptions (contract §7.3), with `work` active:
+
+```json
+{"ok":true,"tool":"trello","command":"list-profiles","data":[
+  {"name":"default","active":false,"declared_in":[],"description":"Personal boards."},
+  {"name":"eu_west","active":false,"declared_in":["environment"],"description":null},
+  {"name":"work","active":true,"declared_in":["config_file","environment"],"description":"Team boards for the platform group."}
+],"meta":{"contract_version":"1.4.1","tool_version":"0.3.0"}}
+```
+
+Every entry carries `description`, `null` when none is set. A tool without description support emits
+entries of `name`, `active` and `declared_in` only.
 
 ## 8. Cursor format
 

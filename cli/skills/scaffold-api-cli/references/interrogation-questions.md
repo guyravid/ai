@@ -71,7 +71,11 @@ names. If the user pastes a real credential, tell them to rotate it.
 ## Configuration
 
 33. Which environments or accounts will the operator use? Name them; they become profiles.
-34. What differs between them: base URL, credentials, limits?
+34. What differs between them: base URL, credentials, limits? Also ask for a one-line description of
+    each profile (at most 200 characters): what it is for, so an agent can choose it from
+    `list-profiles`. Also ask whether a profile is a separate identity (one bot or one account per
+    profile) rather than another view of one identity. If so, the credential is profile-scoped
+    (contract 1.4.2, §12.1): a selected profile must never fall back to the default credential.
 35. Which settings does this API need beyond the contract's table: base URL, workspace or
     organization id, region?
 36. How will credentials be supplied in production: individual secret files, one `.env` file, or

@@ -169,6 +169,11 @@ This build is **read-only**. Commands that change upstream are not available.
   `{{ .Prefix }}_<SETTING>`; the config file's active profile; the config file's `default`
   section; `AGENTCLI_<SETTING>`; the built-in default.
 - `--profile <name>` changes only the settings that profile defines. Everything else stays as it was.
+  A credential that `describe` marks `profile_scoped` is the exception: with a profile selected it
+  comes only from that profile's own sources, never from the unsuffixed variables or the `default`
+  section, and a profile without one fails with `config` (exit 3) rather than using the default's.
+  `list-config` and `doctor` show which source was used.
+- `list-profiles` names the profiles you can use. When an entry has a `description`, it says what that profile is for; a missing or `null` description means none was written.
 
 `{{ .Tool }} teach config` covers all of it in detail, including an example config file.
 

@@ -1,7 +1,7 @@
 # trello: operator guide
 
 `trello` is a command-line tool for the Trello REST API, built for AI agents. It follows the Agent CLI
-Contract 1.4 (`contract/CONTRACT.md` at the repository root). Every call prints exactly one JSON
+Contract 1.4.1 (`contract/CONTRACT.md` at the repository root). Every call prints exactly one JSON
 document. Credentials stay in the tool's own environment, and the agent never handles them.
 
 This guide is for the people who **install and run** the tool. Agents learn it from the tool itself:
@@ -145,12 +145,17 @@ A profile is a named, **partial** set of overrides, usually one per Trello accou
 ```json
 {
   "config_version": 1,
-  "default":  { "env_file": "~/.secrets/trello.env" },
+  "default":  { "description": "Personal boards.", "env_file": "~/.secrets/trello.env" },
   "profiles": {
-    "work": { "dataset_ttl": "4h", "api_token_file": "~/.secrets/trello-work.token" }
+    "work": { "description": "Team boards for the platform group.", "dataset_ttl": "4h", "api_token_file": "~/.secrets/trello-work.token" }
   }
 }
 ```
+
+`description` is optional: one line, 1 to 200 characters, in `default` and in each profile. It says what
+the profile is for, and `list-profiles` shows it so an agent can choose without guessing. It is not a
+setting: no variable, no flag, not in `list-config`. A blank, multi-line, over-long or non-string
+description is a `config` error.
 
 `--profile work` (or `TRELLO_PROFILE=work`) changes only what `work` defines; every other setting keeps
 its value from the lower tiers. A profile can also exist only in the environment
@@ -161,7 +166,9 @@ Selecting an unknown profile is a `config` error, and a profile may not be named
 `trello list-profiles` shows what you can choose. It returns `[]` when no profile is declared, so
 there is nothing to pass to `--profile`. Otherwise it lists `default` (running with no `--profile`)
 first, then each profile, with `active` marking the one in effect and `declared_in` showing whether
-it comes from the config file, the environment, or both. It lists names only, never values.
+it comes from the config file, the environment, or both. Every entry also carries `description`, `null`
+when none is set (always for a profile declared only in the environment). It lists names and
+descriptions only, never values.
 
 ## Datasets
 

@@ -175,6 +175,8 @@ stale with nothing to signal it. It can still be installed from this path.
   version, change class, and any superseded entry; then Summary, Changes, Rationale, and Migration.
   Corrections go in new files rather than edits to old ones. The `change` class is one of:
   - `initial`: the first version of the contract.
+  - `patch`: adds only optional behaviour (MAY), as contract §18 defines, so every tool conforming
+    to the previous version still conforms unchanged; bumps the patch version.
   - `minor`: adds something, as contract §18 defines; bumps the minor version.
   - `major`: changes the meaning of an exit code or flag, or the envelope's shape (§18); bumps the
     major version.
@@ -183,7 +185,7 @@ stale with nothing to signal it. It can still be installed from this path.
     whether anything copied from the old text needs fixing.
 
   Choose by effect, not by size. A one-word change that alters what a tool MUST do is `minor` or
-  `major`.
+  `major`. A change is `patch` only if no existing tool needs to change.
 - A change to the envelope, error codes, flags, or settings touches: the contract,
   `patterns/envelope.md`, `BASE_TEMPLATE.md`, both `teach` templates, the conformance checklist, and
   the verifier. Change them together; drift between them is the most likely defect in this bundle.

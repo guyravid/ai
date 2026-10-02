@@ -6,7 +6,7 @@ The contract is authoritative; if this list and the contract disagree, fix this 
 reused or renumbered, so tests and notes that cite one stay valid; a new check takes the next free
 number in its section.
 
-Last regenerated from contract 1.4: every MUST and MUST NOT has a check, and a SHOULD with a
+Last regenerated from contract 1.4.2: every MUST and MUST NOT has a check, and a SHOULD with a
 measurable budget has one reported as a warning.
 
 `../scripts/verify_conformance.sh` runs the items marked **auto** against a built binary, with
@@ -33,7 +33,7 @@ tool's own test suite.
 
 - **C3-1** auto — A success envelope has exactly `ok`, `tool`, `command`, `data`, `meta` at the top
   level.
-- **C3-2** auto — `meta.contract_version` matches `major.minor`, and `meta.tool_version` is present.
+- **C3-2** auto — `meta.contract_version` matches `major.minor[.patch]`, and `meta.tool_version` is present.
 - **C3-3** auto — Without `--timing`, `meta` contains no `timing` member.
 - **C3-4** auto — An error envelope has `error.code`, `error.exit_code`, `error.message`,
   `error.retriable`; `exit_code` equals the process exit status; `data` is `null` (except `partial`,
@@ -100,7 +100,10 @@ tool's own test suite.
   shared template, rendered.
 - **C6-21** manual — `teach config <aspect>` opens each aspect alone. `teach config` gives every
   setting's default, environment variable, and flag; names credentials by path, never by value; and
-  includes an example file with a profile that sets more than one value.
+  includes an example file with a profile that sets more than one value. In a tool that supports
+  profile descriptions, the profiles aspect also explains `description`. In a tool with a
+  profile-scoped credential (C12-8), the credentials aspect says which credentials are profile-scoped
+  and what that means.
 
 ## §7 Diagnostics
 
@@ -121,9 +124,22 @@ tool's own test suite.
 - **C7-10** auto — With profiles declared in the config file and by variables, `list-profiles` lists
   `default` first (active, `declared_in:[]`), then each profile by name with its `declared_in`; an
   environment-only profile appears under its lowercase segment; entries have exactly `name`,
-  `active`, `declared_in`.
+  `active`, `declared_in`, plus `description` in a tool that supports descriptions (C7-13).
 - **C7-11** auto — The profile selected by `--profile` is the only active entry.
 - **C7-12** auto — An undeclared selected profile gives exit 0, no active entry, and a warning.
+- **C7-13** auto, conditional — Applies only to a tool that supports profile descriptions; skipped
+  only when a config file with a described profile is rejected as an unrecognised member (exit 3,
+  `config`, message or hint names `description` as unrecognised); any other failure on that file is a FAIL. `description` is
+  present on every `list-profiles` entry (`default` included): the file's string for a described
+  profile, `null` for an undescribed one and for an environment-only one. It is never omitted.
+- **C7-14** auto, conditional — Same condition. `description` does not appear among `list-config`
+  settings.
+- **C7-15** auto, conditional — Applies only when `describe` marks a credential `profile_scoped:true`;
+  otherwise skipped. With a profile selected and only the default scope holding a value, the
+  `list-config` entry for that credential is `set:false`, `value:null`, `source` and `origin`
+  `builtin`, and its `hint` names the skipped default-scope variable.
+- **C7-16** auto, conditional — Same condition. In that situation `doctor` fails the `credentials`
+  check and reports `auth` as `skip`.
 
 ## §8 Context discipline
 
@@ -180,8 +196,18 @@ tool's own test suite.
 
 ## §11 Writes
 
-- **C11-1** auto — A mutating command without `--confirm` is `refused`, exit 8, with
-  `details.preview`. (Skipped when the build has no writes.)
+- **C11-1** auto — Every mutating command in `tools --detail`, run without `--confirm` and with dummy
+  credentials, is not sent. Each outcome is either exit 8 `refused` or exit 2 `usage` (no request
+  could be built, so nothing was sent). Dummy values follow each required parameter's `inputSchema`
+  type: `1` for integer and number, the bare flag for boolean, `x` for anything else; positional
+  parameters follow `x-cli.positional`. Any other exit is a FAIL naming the command and exit code,
+  including 0, network and upstream codes, and 3 or 4: a confirm check placed after credential
+  handling is suspicious, because a tool with no credential must still refuse an unconfirmed write.
+  A refusal without `details.preview` counts only when it carries a `details.reason` that is not
+  about confirmation (`chat_not_allowed`, say); that is "not sent", not the preview proof. At least
+  one command must be `refused` with `details.preview` an object; if every command gives `usage` or
+  another refusal, the check FAILs ("no write command could be exercised"), so give at least one
+  write a dummy-satisfiable argument set. (Skipped when the build has no writes.)
 - **C11-2** manual — That refusal, and `--dry-run`, send zero requests upstream.
 - **C11-3** manual — A read-only build has no mutating command in `tools`, `describe`, `teach`, or the
   MCP tool list; refuses a command line naming one with `writes_disabled`; and reports
@@ -208,6 +234,22 @@ tool's own test suite.
   and headers appear by name only, except the fixed list of harmless headers.
 - **C12-7** manual — Where POSIX permissions are unavailable, a credential file is not refused: a
   warning names it, and `doctor` reports its permissions as `unverified`.
+- **C12-8** auto, conditional — Applies only when `describe` marks a credential `profile_scoped:true`
+  (since 1.4.2); otherwise skipped, as for a tool that does not use the feature. With a profile
+  selected whose own section names a `<name>_file`, while the unsuffixed variable (and an unsuffixed
+  `_FILE` variable naming a missing file) is set, `list-config` shows the credential `set:true`,
+  `origin:"file_profile"`: the profile's own source won, and the default-scope file was not opened.
+- **C12-9** auto, conditional — Same condition. A selected profile with nothing in its own scope while
+  the unsuffixed variable is set: `doctor` exits 3 with `config`, `details.profile`, and
+  `details.would_use_source` equal to the skipped variable's name, never a value; a `hint` is
+  present and the value appears nowhere in the output.
+- **C12-10** auto, conditional — Same condition. A selected profile with a credential in neither
+  scope: `doctor` exits 4 with `auth`.
+- **C12-11** auto, conditional — Same condition. With no profile selected, the unsuffixed variable is
+  used: `set:true`, `origin:"env_default"`.
+- **C12-12** manual — A profile-suffixed key in the `env_file` of the `default` section counts as the
+  profile's own source; an unsuffixed key there, and `default.<name>_file`, do not. Settings other than
+  the profile-scoped credential still inherit from `default`.
 
 ## §13 Configuration
 
@@ -232,6 +274,9 @@ tool's own test suite.
 - **C13-17** auto — A duration or size without a unit is `config`, exit 3.
 - **C13-18** auto — The hint for an undeclared profile points to `list-profiles`. (Reported as a
   warning; the hint is a SHOULD.)
+- **C13-19** auto, conditional — Applies only to a tool that supports profile descriptions. A
+  `description` of 201 characters, one containing a line break, a non-string one, and a blank one are
+  each `config`, exit 3.
 
 ## §14 Determinism
 

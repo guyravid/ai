@@ -125,9 +125,9 @@ else
   bad "C3-1" "success top-level members: $(jq -c 'keys' "$WORK/out/tools.json")"
 fi
 
-if jq -e '(.meta.contract_version | test("^[0-9]+\\.[0-9]+$")) and (.meta.tool_version | type == "string")' \
+if jq -e '(.meta.contract_version | test("^[0-9]+\\.[0-9]+(\\.[0-9]+)?$")) and (.meta.tool_version | type == "string")' \
      "$WORK/out/tools.json" >/dev/null 2>&1; then
-  ok "C3-2" "meta carries contract_version (major.minor) and tool_version"
+  ok "C3-2" "meta carries contract_version (major.minor[.patch]) and tool_version"
 else
   bad "C3-2" "meta.contract_version or meta.tool_version missing or malformed"
 fi
@@ -399,25 +399,47 @@ else
   skip "C10-6" "no dataset commands in this build"
 fi
 
-WRITE=$(jq -r '[.data[] | select(.mutates) | .name][0] // empty' "$WORK/out/detail.json")
-if [ -n "$WRITE" ]; then
-  # Build an argv that satisfies every required parameter with a dummy value.
-  WARGS=()
-  while IFS= read -r a; do WARGS+=("$a"); done < <(jq -r --arg n "$WRITE" '.data.commands[] | select(.name == $n) as $c
-      | $c.argv[],
-        ($c.inputSchema.required // [] | .[] as $p
-         | if ($c["x-cli"].positional // [] | index($p)) != null then "x"
-           else ($c["x-cli"].flags[$p] // ("--" + $p)), "x" end)' "$WORK/out/describe.json")
+# C11-1: every mutating command, run without --confirm, must either be refused (exit 8) or fail as
+# usage (exit 2: no request could be built, so nothing was sent). Dummy values follow the parameter's
+# schema type: 1 for integer and number, the bare flag for boolean, "x" for anything else. At least one
+# command must be refused with a preview object, which is the proof that the confirm gate sits before
+# the request is sent. A refusal for another reason (a chat not allowed, say) counts as "not sent" only.
+WRITES=$(jq -r '.data[] | select(.mutates) | .name' "$WORK/out/detail.json")
+if [ -n "$WRITES" ]; then
   # Dummy credentials, so a tool cannot stop at "no credential" and hide a missing confirm check.
-  # Any outcome other than a refusal means the tool attempted the write.
   DUMMY_VARS=()
   for v in $(jq -r '.data.auth.credentials[]?.env' "$WORK/out/describe.json"); do DUMMY_VARS+=("$v=dummy-not-a-real-key"); done
-  run write ${DUMMY_VARS[@]+"${DUMMY_VARS[@]}"} -- "${WARGS[@]}"
-  if [ "$(rc write)" = "8" ] && jq -e '.error.code == "refused" and (.error.details.preview | type == "object")' \
-       "$WORK/out/write.json" >/dev/null 2>&1; then
-    ok "C11-1" "write without --confirm is refused with a preview"
+  c111_bad=""; c111_preview=0; c111_idx=0
+  while IFS= read -r WRITE; do
+    c111_idx=$((c111_idx+1))
+    WARGS=()
+    while IFS= read -r a; do WARGS+=("$a"); done < <(jq -r --arg n "$WRITE" '.data.commands[] | select(.name == $n) as $c
+        | $c.argv[],
+          ($c.inputSchema.required // [] | .[] as $p
+           | ($c.inputSchema.properties[$p].type // "string") as $t
+           | (if ($t | type) == "array" then ($t | map(select(. != "null")) | .[0] // "string") else $t end) as $ty
+           | if ($c["x-cli"].positional // [] | index($p)) != null then (if $ty == "integer" or $ty == "number" then "1" else "x" end)
+             else ($c["x-cli"].flags[$p] // ("--" + $p)),
+                  (if $ty == "integer" or $ty == "number" then "1" elif $ty == "boolean" then empty else "x" end) end)' \
+        "$WORK/out/describe.json")
+    run "write$c111_idx" ${DUMMY_VARS[@]+"${DUMMY_VARS[@]}"} -- "${WARGS[@]}"
+    wrc=$(rc "write$c111_idx"); wf="$WORK/out/write$c111_idx.json"
+    if [ "$wrc" = "8" ] && jq -e '.error.code == "refused" and (.error.details.preview | type == "object")' "$wf" >/dev/null 2>&1; then
+      c111_preview=$((c111_preview+1))
+    elif [ "$wrc" = "8" ] && jq -e '.error.code == "refused" and ((.error.details.reason // "") | type == "string" and length > 0 and (test("confirm"; "i") | not))' "$wf" >/dev/null 2>&1; then
+      :   # refused for another reason: nothing was sent, but this is not the preview proof
+    elif [ "$wrc" = "2" ] && jq -e '.error.code == "usage"' "$wf" >/dev/null 2>&1; then
+      :   # no request could be built
+    else
+      c111_bad="$c111_bad $WRITE(exit $wrc)"
+    fi
+  done <<<"$WRITES"
+  if [ -n "$c111_bad" ]; then
+    bad "C11-1" "write without --confirm was attempted or refused without a preview:$c111_bad"
+  elif [ "$c111_preview" -eq 0 ]; then
+    bad "C11-1" "no write command could be exercised; give at least one write a dummy-satisfiable argument set"
   else
-    bad "C11-1" "write without --confirm was attempted (exit $(rc write)) instead of refused with a preview"
+    ok "C11-1" "every write without --confirm is refused or fails as usage; $c111_preview refused with a preview"
   fi
 else
   skip "C11-1" "no write commands in this build"
@@ -562,8 +584,8 @@ if jq -e '.data | map(.name) == ["default","envonly","probe"]
           and .[0].active == true and .[0].declared_in == [] and ([.[1:][] | .active] | any | not)
           and (.[1].declared_in == ["environment"])
           and (.[2].declared_in | sort == ["config_file","environment"])
-          and all(.[]; keys == ["active","declared_in","name"])' "$WORK/out/lpmixed.json" >/dev/null 2>&1; then
-  ok "C7-10" "list-profiles lists default first, then file and environment profiles by name, names only"
+          and all(.[]; (keys - ["description"]) == ["active","declared_in","name"])' "$WORK/out/lpmixed.json" >/dev/null 2>&1; then
+  ok "C7-10" "list-profiles lists default first, then file and environment profiles by name, names (and descriptions) only"
 else
   bad "C7-10" "list-profiles output wrong: $(jq -c '.data' "$WORK/out/lpmixed.json" 2>/dev/null | head -c 300)"
 fi
@@ -584,6 +606,138 @@ if jq -e '.error.hint | test("list-profiles")' "$WORK/out/profunknown.json" >/de
   ok "C13-18" "the undeclared-profile hint points to list-profiles"
 else
   warn "C13-18" "the undeclared-profile hint does not mention list-profiles (a SHOULD)"
+fi
+
+# Optional profile descriptions (contract 1.4.1, §13.4 rule 6, §7.3). A tool that rejects the member as
+# unrecognised does not support them, and these checks are skipped.
+printf '{"default":{"description":"Default probe."},"profiles":{"probe":{"description":"Probe profile."},"plain":{"limit":5}}}' \
+  >"$WORK/cfg/desc.json"
+run descsupport "${P}_LIMIT_ENVONLY=6" -- list-profiles --config "$WORK/cfg/desc.json"
+# The skip applies only to the unrecognised-member rejection of description (exit 3, config, and the
+# message or hint names description and says it is unrecognised). Any other failure is a FAIL, so a supporting tool with a broken
+# validator cannot skip silently.
+if [ "$(rc descsupport)" = "3" ] &&
+   jq -e '.error.code == "config" and (((.error.message // "") + " " + (.error.hint // "")) | test("description") and test("unrecogni[sz]ed|unknown|unsupported|not recogni[sz]ed"; "i"))' \
+     "$WORK/out/descsupport.json" >/dev/null 2>&1; then
+  skip "C7-13" "descriptions not supported by this tool"
+  skip "C7-14" "descriptions not supported by this tool"
+  skip "C13-19" "descriptions not supported by this tool"
+elif [ "$(rc descsupport)" != "0" ]; then
+  bad "C7-13" "list-profiles on a config with valid descriptions gave exit $(rc descsupport): $(jq -r '.error.message // empty' "$WORK/out/descsupport.json" 2>/dev/null | head -c 200)"
+  bad "C7-14" "not checked: list-profiles failed on a config with valid descriptions"
+  bad "C13-19" "not checked: list-profiles failed on a config with valid descriptions"
+else
+  if jq -e '.data | map(.name) == ["default","envonly","plain","probe"]
+            and all(.[]; has("description"))
+            and ((.[] | select(.name == "default") | .description) == "Default probe.")
+            and ((.[] | select(.name == "probe") | .description) == "Probe profile.")
+            and ((.[] | select(.name == "plain") | .description) == null)
+            and ((.[] | select(.name == "envonly") | .description) == null)' "$WORK/out/descsupport.json" >/dev/null 2>&1; then
+    ok "C7-13" "list-profiles carries description on every entry, null when unset or environment-only"
+  else
+    bad "C7-13" "list-profiles descriptions wrong: $(jq -c '.data' "$WORK/out/descsupport.json" 2>/dev/null | head -c 400)"
+  fi
+  run desclc -- list-config --config "$WORK/cfg/desc.json" --profile probe
+  if [ "$(rc desclc)" = "0" ] &&
+     jq -e '[.data.settings[].name | ascii_downcase] | index("description") | not' "$WORK/out/desclc.json" >/dev/null 2>&1; then
+    ok "C7-14" "description is not a setting: absent from list-config"
+  else
+    bad "C7-14" "list-config exit $(rc desclc), or it lists description as a setting"
+  fi
+  long=$(printf 'x%.0s' $(seq 201))
+  descbad=""
+  i=0
+  for variant in \
+      "{\"profiles\":{\"probe\":{\"description\":\"$long\"}}}" \
+      "{\"default\":{\"description\":\"$long\"}}" \
+      '{"profiles":{"probe":{"description":"line one\nline two"}}}' \
+      '{"default":{"description":"line one\rline two"}}' \
+      '{"profiles":{"probe":{"description":7}}}' \
+      '{"profiles":{"probe":{"description":"   "}}}' \
+      '{"default":{"description":""}}'; do
+    i=$((i+1))
+    printf '%s' "$variant" >"$WORK/cfg/descbad$i.json"
+    run descbad$i -- list-profiles --config "$WORK/cfg/descbad$i.json"
+    if [ "$(rc descbad$i)" != "3" ] || ! jq -e '.error.code == "config" and ((.error.hint // "") | test("description"))' \
+         "$WORK/out/descbad$i.json" >/dev/null 2>&1; then
+      descbad="$descbad $i"
+    fi
+  done
+  [ -z "$descbad" ] && ok "C13-19" "a description over 200 characters, multi-line, non-string, or blank is config with a pointer hint" \
+                    || bad "C13-19" "invalid descriptions not rejected as config with a hint naming description (variants:$descbad)"
+fi
+
+# Optional profile-scoped credentials (contract 1.4.2, §12.1). Run only when describe marks a credential
+# profile_scoped:true; otherwise skipped. Credentials that are not profile-scoped get a dummy value in the
+# default scope in every case, so only the profile-scoped one decides each outcome.
+PSC=$(jq -r '[.data.auth.credentials[]? | select(.profile_scoped == true)][0].name // empty' "$WORK/out/describe.json")
+PSC_IDS="C12-8 C12-9 C12-10 C12-11 C7-15 C7-16"
+if [ -z "$PSC" ]; then
+  for id in $PSC_IDS; do skip "$id" "no credential is marked profile_scoped"; done
+else
+  PSC_ENV=$(jq -r --arg n "$PSC" '.data.auth.credentials[] | select(.name == $n) | .env' "$WORK/out/describe.json")
+  PSC_LC=$(printf '%s' "$PSC" | tr '[:upper:]' '[:lower:]')
+  PSC_VALUE="scopedvalue${RANDOM}${RANDOM}ZZ"
+  OTHER_VARS=()
+  for v in $(jq -r --arg n "$PSC" '.data.auth.credentials[] | select(.name != $n) | .env' "$WORK/out/describe.json"); do
+    OTHER_VARS+=("$v=dummy-not-a-real-key")
+  done
+  printf '%s\n' "$PSC_VALUE" >"$WORK/cfg/psc-own.key"; chmod 600 "$WORK/cfg/psc-own.key"
+  printf '{"profiles":{"probe":{"%s_file":"%s"}}}' "$PSC_LC" "$WORK/cfg/psc-own.key" >"$WORK/cfg/psc-own.json"
+  printf '{"profiles":{"probe":{"limit":8}}}' >"$WORK/cfg/psc-none.json"
+  psc_row() { jq -c --arg n "$PSC" '.data.settings[] | select(.name == $n)' "$WORK/out/$1.json" 2>/dev/null; }
+
+  # C12-8: the profile's own file wins over an exported default-scope variable (and a default-scope
+  # file variable naming a file that does not exist, which must not even be opened).
+  run pscown "$PSC_ENV=$PSC_VALUE" "${PSC_ENV}_FILE=$WORK/cfg/absent.key" ${OTHER_VARS[@]+"${OTHER_VARS[@]}"} \
+      -- list-config --config "$WORK/cfg/psc-own.json" --profile probe
+  if [ "$(rc pscown)" = "0" ] &&
+     jq -e '.set == true and .origin == "file_profile" and .value == null' <<<"$(psc_row pscown)" >/dev/null 2>&1; then
+    ok "C12-8" "a profile's own credential file beats an exported default-scope variable (origin file_profile)"
+  else
+    bad "C12-8" "profile-scoped credential did not come from the profile's own file: $(psc_row pscown | head -c 300) (exit $(rc pscown))"
+  fi
+
+  # C12-9, C7-15, C7-16: only the default scope has it.
+  run pscdef "$PSC_ENV=$PSC_VALUE" ${OTHER_VARS[@]+"${OTHER_VARS[@]}"} -- doctor --config "$WORK/cfg/psc-none.json" --profile probe
+  if [ "$(rc pscdef)" = "3" ] &&
+     jq -e --arg env "$PSC_ENV" '.error.code == "config" and .error.details.profile == "probe"
+           and .error.details.would_use_source == $env and ((.error.hint // "") | length > 0)' "$WORK/out/pscdef.json" >/dev/null 2>&1 &&
+     ! grep -q "$PSC_VALUE" "$WORK/out/pscdef.json" "$WORK/out/pscdef.err"; then
+    ok "C12-9" "default scope only: config, exit 3, details.profile and would_use_source (a name, never a value)"
+  else
+    bad "C12-9" "profile with only a default-scope credential did not fail as config/3 with would_use_source (exit $(rc pscdef))"
+  fi
+  if jq -e '(.data.checks | map(select(.name == "credentials")) | .[0].status == "fail")
+            and (.data.checks | map(select(.name == "auth")) | .[0].status == "skip")' "$WORK/out/pscdef.json" >/dev/null 2>&1; then
+    ok "C7-16" "doctor fails credentials for a profile with no credential of its own and skips auth"
+  else
+    bad "C7-16" "doctor did not fail credentials and skip auth for a profile with only a default-scope credential"
+  fi
+  run pscdeflc "$PSC_ENV=$PSC_VALUE" ${OTHER_VARS[@]+"${OTHER_VARS[@]}"} -- list-config --config "$WORK/cfg/psc-none.json" --profile probe
+  if [ "$(rc pscdeflc)" = "0" ] &&
+     jq -e --arg env "$PSC_ENV" '.set == false and .value == null and .source == "builtin" and .origin == "builtin"
+           and ((.hint // "") | contains($env))' <<<"$(psc_row pscdeflc)" >/dev/null 2>&1; then
+    ok "C7-15" "list-config reports set:false with a hint naming the skipped default-scope source"
+  else
+    bad "C7-15" "list-config row for a skipped default-scope credential wrong: $(psc_row pscdeflc | head -c 300)"
+  fi
+
+  # C12-10: neither scope has it.
+  run pscnone ${OTHER_VARS[@]+"${OTHER_VARS[@]}"} -- doctor --config "$WORK/cfg/psc-none.json" --profile probe
+  if [ "$(rc pscnone)" = "4" ] && jq -e '.error.code == "auth"' "$WORK/out/pscnone.json" >/dev/null 2>&1; then
+    ok "C12-10" "no credential in either scope is auth, exit 4"
+  else
+    bad "C12-10" "profile with no credential anywhere gave exit $(rc pscnone), expected auth/4"
+  fi
+
+  # C12-11: with no profile, the default scope applies unchanged.
+  run pscnoprof "$PSC_ENV=$PSC_VALUE" ${OTHER_VARS[@]+"${OTHER_VARS[@]}"} -- list-config
+  if jq -e '.set == true and .origin == "env_default" and .source != null' <<<"$(psc_row pscnoprof)" >/dev/null 2>&1; then
+    ok "C12-11" "without a profile the default-scope variable is used (env_default)"
+  else
+    bad "C12-11" "without a profile the default-scope credential was not used: $(psc_row pscnoprof | head -c 300)"
+  fi
 fi
 
 run barenum "${P}_TIMEOUT=30" -- list-config

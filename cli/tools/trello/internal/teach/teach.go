@@ -389,6 +389,7 @@ A profile is a named, partial set of overrides. Select one with `+"`--profile <n
 - A profile exists when the config file declares it under "profiles", or when any %[1]s_<SETTING>_<PROFILE> variable is set for it. Selecting any other name is a config error.
 - In variable names the profile is uppercased, with - replaced by _: profile eu-west reads %[1]s_TIMEOUT_EU_WEST.
 - A profile cannot be named FILE or default.
+- A profile, and the `+"`default`"+` section, may carry a `+"`description`"+` in the config file: one line, 1 to 200 characters, saying what it is for. `+"`%[2]s list-profiles`"+` shows it on every entry (null when unset), so an agent can pick a profile without guessing. It is not a setting: it has no environment variable or flag and is not in `+"`list-config`"+`. A blank, multi-line or over-long description is a config error.
 - `+"`%[2]s list-profiles`"+` lists the profiles you can use: `+"`default`"+` (no `+"`--profile`"+`) first, then each declared profile. An empty list means there are none, so leave `+"`--profile`"+` off.
 `, in.Data.Prefix, in.Data.Tool)
 }
@@ -429,7 +430,7 @@ func configCredentials(in Input) string {
 }
 
 func configExample(in Input) string {
-	return fmt.Sprintf("## Example config file\n\n```json\n%s\n```\n\nProfile `work` overrides two settings and one credential path; everything else comes from `default`.\n",
+	return fmt.Sprintf("## Example config file\n\n```json\n%s\n```\n\nProfile `work` overrides two settings and one credential path; everything else comes from `default`. The `description` members are read only by `list-profiles`.\n",
 		strings.TrimSpace(ExampleConfig))
 }
 
@@ -437,17 +438,20 @@ func configExample(in Input) string {
 const ExampleConfig = `{
   "config_version": 1,
   "default": {
+    "description": "Day-to-day Trello account, used when no profile is chosen.",
     "limit": 25,
     "timeout": "30s",
     "env_file": "~/.secrets/trello.env"
   },
   "profiles": {
     "work": {
+      "description": "Work account: team boards for the platform group.",
       "dataset_ttl": "4h",
       "max_pages": 20,
       "api_token_file": "~/.secrets/trello-work.token"
     },
     "personal": {
+      "description": "Personal account: private boards and side projects.",
       "api_key_file": "~/.secrets/trello-personal.key",
       "api_token_file": "~/.secrets/trello-personal.token"
     }

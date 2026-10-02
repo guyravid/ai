@@ -538,3 +538,172 @@ func TestServeHTTPEndToEnd(t *testing.T) {
 		t.Error("no shutdown line")
 	}
 }
+
+// hangingBoards is an upstream whose boards listing never answers: it holds the request until the
+// caller hangs up, which is recorded.
+type hangingBoards struct {
+	inFlight chan struct{}
+	hungUp   chan struct{}
+	started  sync.Once
+	ended    sync.Once
+}
+
+func newHangingBoards(t *testing.T) (*hangingBoards, string) {
+	t.Helper()
+	upstream := &hangingBoards{inFlight: make(chan struct{}), hungUp: make(chan struct{})}
+	fake := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		upstream.started.Do(func() { close(upstream.inFlight) })
+		select {
+		case <-r.Context().Done():
+			upstream.ended.Do(func() { close(upstream.hungUp) })
+		case <-time.After(time.Minute):
+			w.Header().Set("Content-Type", "application/json")
+			fmt.Fprint(w, `[]`)
+		}
+	}))
+	t.Cleanup(fake.Close)
+	return upstream, fake.URL + "/1"
+}
+
+func awaitSignal(t *testing.T, signal <-chan struct{}, what string) {
+	t.Helper()
+	select {
+	case <-signal:
+	case <-time.After(10 * time.Second):
+		t.Fatalf("timed out waiting for %s", what)
+	}
+}
+
+// A client that cancels its call ends it at once, and the upstream request is hung up on.
+func TestCallOverMCPStopsWhenTheClientCancels(t *testing.T) {
+	upstream, baseURL := newHangingBoards(t)
+	application, _ := newApp(t, map[string]string{"TRELLO_BASE_URL": baseURL})
+	session := connect(t, NewServer(application, app.TransportStdio, nil))
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	finished := make(chan error, 1)
+	go func() {
+		_, err := session.CallTool(ctx, &mcp.CallToolParams{Name: "boards.list", Arguments: map[string]any{}})
+		finished <- err
+	}()
+	awaitSignal(t, upstream.inFlight, "the upstream request to start")
+	cancel()
+	select {
+	case err := <-finished:
+		if err == nil {
+			t.Error("a canceled call should not return a result")
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("the call did not return after the client canceled")
+	}
+	awaitSignal(t, upstream.hungUp, "the upstream request to be hung up on")
+}
+
+// Shutting the server down (SIGINT/SIGTERM cancels its context) ends a call in progress.
+func TestCallOverMCPStopsWhenTheServerShutsDown(t *testing.T) {
+	upstream, baseURL := newHangingBoards(t)
+	application, _ := newApp(t, map[string]string{"TRELLO_BASE_URL": baseURL})
+	serverCtx, shutdown := context.WithCancel(context.Background())
+	defer shutdown()
+	server := newServer(serverCtx, application, app.TransportStdio, nil)
+	clientTransport, serverTransport := mcp.NewInMemoryTransports()
+	ran := make(chan error, 1)
+	go func() { ran <- server.Run(serverCtx, serverTransport) }()
+	session, err := mcp.NewClient(&mcp.Implementation{Name: "test", Version: "1"}, nil).Connect(context.Background(), clientTransport, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer session.Close()
+	go session.CallTool(context.Background(), &mcp.CallToolParams{Name: "boards.list", Arguments: map[string]any{}})
+	awaitSignal(t, upstream.inFlight, "the upstream request to start")
+	shutdown()
+	select {
+	case <-ran:
+	case <-time.After(5 * time.Second):
+		t.Fatal("the server did not stop while a call was in progress")
+	}
+	awaitSignal(t, upstream.hungUp, "the upstream request to be hung up on")
+}
+
+func startHTTP(t *testing.T, application *app.App, stderr *syncBuffer) (base string, shutdown context.CancelFunc, done chan *app.Response) {
+	t.Helper()
+	ctx, cancel := context.WithCancel(context.Background())
+	done = make(chan *app.Response, 1)
+	go func() {
+		done <- Run(ctx, application, &app.Invocation{Command: application.Registry.Get("serve"),
+			Flags: map[string]string{"transport": "http", "addr": "127.0.0.1:0"}})
+	}()
+	deadline := time.Now().Add(5 * time.Second)
+	for time.Now().Before(deadline) {
+		scanner := bufio.NewScanner(strings.NewReader(stderr.String()))
+		for scanner.Scan() {
+			var line map[string]any
+			if json.Unmarshal(scanner.Bytes(), &line) == nil && line["msg"] == "serve started" {
+				return "http://" + line["addr"].(string), cancel, done
+			}
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	t.Fatalf("no startup line: %s", stderr.String())
+	return "", cancel, done
+}
+
+func TestCallOverHTTPEndsWhenTheClientCancelsOrTheServerShutsDown(t *testing.T) {
+	for _, scenario := range []string{"client cancels", "server shuts down"} {
+		t.Run(scenario, func(t *testing.T) {
+			upstream, baseURL := newHangingBoards(t)
+			application, stderr := newApp(t, map[string]string{"TRELLO_BASE_URL": baseURL})
+			base, shutdown, done := startHTTP(t, application, stderr)
+			defer shutdown()
+
+			clientCtx, cancelClient := context.WithCancel(context.Background())
+			defer cancelClient()
+			session, err := mcp.NewClient(&mcp.Implementation{Name: "test", Version: "1"}, nil).
+				Connect(clientCtx, &mcp.StreamableClientTransport{Endpoint: base + "/mcp"}, nil)
+			if err != nil {
+				t.Fatal(err)
+			}
+			called := make(chan error, 1)
+			go func() {
+				_, err := session.CallTool(clientCtx, &mcp.CallToolParams{Name: "boards.list", Arguments: map[string]any{}})
+				called <- err
+			}()
+			awaitSignal(t, upstream.inFlight, "the upstream request to start")
+
+			if scenario == "client cancels" {
+				cancelClient()
+				select {
+				case <-called:
+				case <-time.After(5 * time.Second):
+					t.Fatal("the call did not return after the client canceled")
+				}
+				awaitSignal(t, upstream.hungUp, "the upstream request to be hung up on")
+				shutdown()
+			} else {
+				started := time.Now()
+				shutdown()
+				select {
+				case response := <-done:
+					if response.Exit != 0 {
+						t.Errorf("shutdown exit %d: %s", response.Exit, stderr.String())
+					}
+				case <-time.After(15 * time.Second):
+					t.Fatal("the server did not stop while a call was in progress")
+				}
+				if elapsed := time.Since(started); elapsed > 3*time.Second {
+					t.Errorf("shutdown took %s; an in-progress call should be canceled, not waited out", elapsed)
+				}
+				awaitSignal(t, upstream.hungUp, "the upstream request to be hung up on")
+				return
+			}
+			select {
+			case response := <-done:
+				if response.Exit != 0 {
+					t.Errorf("shutdown exit %d: %s", response.Exit, stderr.String())
+				}
+			case <-time.After(15 * time.Second):
+				t.Fatal("the server did not stop")
+			}
+		})
+	}
+}

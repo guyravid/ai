@@ -1,0 +1,6 @@
+bin/
+dist/
+*_test.go
+Dockerfile
+Makefile
+README.md

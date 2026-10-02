@@ -238,6 +238,27 @@ the values in one place, and never read them again.
 Validate lazily: resolve at startup, but raise `auth` only when a handler actually needs a missing
 credential. Discovery, `teach`, and `list-config` must work with nothing configured.
 
+**Profile-scoped credentials (optional; contract 1.4.2).** Add this when profiles stand for separate
+identities (a bot or an account per profile), so that a profile never silently acts as the default one.
+Then, for a credential you mark `profile_scoped:true` in `describe`:
+
+- Do it in resolution, not as a check of the winner. With a profile selected, build the list of sources
+  from the profile scope only: the suffixed variables, `profiles.<p>.<name>_file` or `.env_file`, and
+  the profile-suffixed key in `default.env_file`. A check afterwards cannot tell that a profile's own
+  file should have beaten an exported unsuffixed variable.
+- Still note the default-scope sources you skipped, without opening files: the unsuffixed variables'
+  names (and values, when the environment already holds them), the pointer of `default.<name>_file`.
+  When the profile scope yields nothing, a skipped source means `config` (exit 3) with
+  `details.profile` and `details.would_use_source` and a hint naming the profile-scoped ways; no skipped
+  source means the ordinary `auth`.
+- Give the redactor the default-scope values you have already loaded (an environment variable, an
+  `env_file` opened to look for the profile's key). Do not open `default.<name>_file` just to redact it:
+  covering a value nobody read protects nothing.
+- Make `list-config` report the source used, or `set:false` with a hint naming the skipped source, and
+  `doctor`'s `credentials` check report the same. Add the rule to the `teach config` credentials aspect,
+  and report `1.4.2`.
+- With no profile selected, resolve in the usual order. Other settings still inherit through §13.2.
+
 When reading an `env_file`, keep only the declared credential keys (profile-suffixed first) and
 discard every other line before the data leaves the parser. Parse conservatively: optional `export`,
 `KEY=value`, matching surrounding quotes stripped, `#` comments and blank lines skipped, no variable
@@ -535,6 +556,25 @@ rest after `_` is the profile segment. Merge entries by segment, keeping the con
 and list environment-only profiles in lowercase. Resolve the selected profile as every command does,
 but do not fail when it is undeclared: mark nothing active and add a warning. Return `[]` when no
 profile is declared, otherwise `default` first. Contract §7.3 has the output.
+
+**Profile descriptions (optional; recommended for new tools).** Contract 1.4.1 lets a tool accept a
+one-line `description` in the config file's `default` section and in each profile (§13.4 rule 6). To
+support it:
+
+- Validate it where the config file is loaded, with the other member checks: a string, no `\n` or
+  `\r`, at most 200 characters, not empty after trimming. A violation is `config`, and the hint names
+  the pointer (`config.json#profiles.work.description`). Count characters, not bytes.
+- Keep it out of the settings resolver, the settings table, and `list-config`. It is not a setting, so
+  it has no environment variable, flag or precedence tier. Put it in the config file's JSON Schema as a
+  property of `default` and of each profile (`type: string`, `maxLength: 200`).
+- Carry it on each discovered profile, and emit `description` on every `list-profiles` entry: the
+  file's value or `null`. Environment-only profiles and `default` without `default.description` are
+  `null`. `list-profiles` output bypasses empty-stripping, so `null` stays.
+- Mention it in the `teach config` profiles aspect and in the example config file, and report
+  `1.4.1` as the `contract_version`.
+
+A tool that skips this omits `description` from the entries and keeps rejecting the member as
+unrecognised.
 
 ## §16 MCP server mode
 

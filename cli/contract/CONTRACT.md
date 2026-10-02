@@ -1,6 +1,6 @@
 # Agent CLI Contract
 
-**Contract version `1.4`**
+**Contract version `1.4.2`**
 
 A conforming tool is a command-line binary that gives an automated agent access to one remote API.
 This document says what such a tool does and why. How to build one is in
@@ -276,6 +276,7 @@ publish the same entries unchanged.
 | `argv` | The command line path |
 | `outputSchema` | Constrains `data` only, never the whole envelope |
 | `annotations.readOnlyHint` | `true` exactly when the command is not mutating; always the opposite of `mutates` in `tools --detail` |
+| `auth.credentials[].profile_scoped` | Optional (since 1.4.2). `true` for a profile-scoped credential (§12.1); omitted otherwise. A tool that does not use the feature omits it |
 | `x-cli.flags` | Maps each parameter to its flag |
 | `x-cli.positional` | Parameters given by position, in order |
 | `x-cli.paged` | Whether the command returns a list (§9) |
@@ -346,7 +347,10 @@ MUST be identical across every tool. An agent that has read it once for any tool
   one exists; the precedence order (§13.2); how profiles work; where files live (§13.1); how
   credentials resolve (§12.1), stating plainly that credential references in the config file are
   **paths**, never values; and a complete example configuration file with at least one profile
-  that sets more than one value. `teach config <aspect>` MUST let a reader open one of these alone.
+  that sets more than one value. In a tool that supports profile descriptions (§13.4), the profiles
+  aspect MUST also explain `description`. In a tool with any profile-scoped credential (§12.1), the
+  credentials aspect MUST also say which credentials are profile-scoped and what that means.
+  `teach config <aspect>` MUST let a reader open one of these alone.
 
 A tool author MUST NOT define topics named `contract`, `flags`, or `config`.
 
@@ -392,6 +396,9 @@ A check that cannot run because an earlier one failed MUST be reported as `skip`
 exit code matching the first failing check. On failure it returns the error envelope with
 `data.checks` still populated, since the full report is the point of the command.
 
+For a profile-scoped credential (§12.1), the `credentials` check reports the profile-scope source that
+was used, or fails with exit 3 (`config`) when only the default scope has one.
+
 There is no separate `whoami` command. Identity is reported by the `auth` check.
 
 ### §7.2 `list-config`
@@ -421,6 +428,11 @@ contact upstream, and it MUST succeed with nothing configured.
 For a credential, `value` MUST be `null` and `set` MUST be present. `source` still names where it
 came from. When a credential is unset, a `hint` SHOULD name every way to supply it.
 
+For a profile-scoped credential (§12.1) with a profile selected, `source` and `origin` name the
+profile-scope source actually used, never a skipped default-scope one. When only the default scope has
+a source, the entry is `set:false` with `source` and `origin` `builtin`, and its `hint` names the
+skipped source and the profile-scoped ways to supply the credential.
+
 `list-config --schema` returns the JSON Schema of the config file in `data.schema`.
 
 ### §7.3 `list-profiles`
@@ -431,17 +443,21 @@ succeed with nothing configured, and MUST NOT be truncated.
 
 ```json
 {"ok":true,"tool":"trello","command":"list-profiles","data":[
-  {"name":"default","active":true,"declared_in":[]},
-  {"name":"eu_west","active":false,"declared_in":["environment"]},
-  {"name":"work","active":false,"declared_in":["config_file","environment"]}
-],"meta":{"contract_version":"1.4","tool_version":"0.3.0"}}
+  {"name":"default","active":true,"declared_in":[],"description":"Personal boards."},
+  {"name":"eu_west","active":false,"declared_in":["environment"],"description":null},
+  {"name":"work","active":false,"declared_in":["config_file","environment"],"description":"Team boards for the platform group."}
+],"meta":{"contract_version":"1.4.1","tool_version":"0.3.0"}}
 ```
+
+The example is from a tool that supports descriptions (below). A tool that does not omits `description`
+from every entry.
 
 | Member | Rule |
 |---|---|
 | `name` | The value `--profile` takes. `default` stands for running without `--profile` |
 | `active` | `true` for the profile this invocation selected (§13.3), or for `default` when none is selected |
 | `declared_in` | Where the profile is declared (§13.3): `config_file`, `environment`, or both. Empty for `default` |
+| `description` | Optional support (see below). The one-line description from the config file (§13.4), or `null` when none is set |
 
 Rules:
 
@@ -452,9 +468,24 @@ Rules:
    `<TOOL>_<SETTING>_<PROFILE>` variables is listed under the variable's profile segment in
    lowercase (`TRELLO_TIMEOUT_EU_WEST` lists `eu_west`), and that name selects it. A file entry and
    variables that map to the same segment are one profile.
-4. Names only: never a setting's value, and never a credential.
+4. Names and descriptions only: never a setting's value, and never a credential.
 5. A selected profile that is not declared does not fail `list-profiles`: no entry is active, and a
    warning names the profile. *Why:* a mistyped profile name is exactly when the list is needed.
+
+**Descriptions (optional, since 1.4.1).** A tool MAY support the `description` member of the config
+file (§13.4). A tool that does:
+
+1. MUST include `description` on every entry, never omitting it from some. For a profile declared in
+   the config file it is that profile's `description`; for `default` it is `default.description`. It is
+   `null` when none is set, including for a profile declared only by variables, which has no file
+   section.
+2. MUST NOT strip it when empty: §8.3 does not apply to `list-profiles`, so `null` stays.
+3. MUST NOT offer it as a setting: it does not appear in `list-config` (§7.2).
+
+A tool that does not support descriptions omits the member entirely. A caller treats a missing
+`description` and a `null` one the same way. *Why:* a name such as `work` or `bot2` rarely says which
+profile fits a task, and a short sentence written by the operator does. Capping its length (§13.4)
+keeps the list cheap and untruncatable. (A1)
 
 ## §8 Context discipline
 
@@ -750,6 +781,33 @@ profile-suffixed keys first, and ignores every other line.
 
 A missing credential is `auth`, with a hint naming every way to supply it.
 
+**Profile-scoped credentials (optional, since 1.4.2).** Steps 3, 4, and 6 are the *default scope*: the
+unsuffixed `<TOOL>_<NAME>` and `<TOOL>_<NAME>_FILE` variables, and the config file's `default` section.
+Steps 1, 2, and 5 are the *profile scope*: the suffixed variables and `profiles.<profile>.*`. A
+profile-suffixed key in the `env_file` of the `default` section (`TRELLO_API_KEY_WORK`) is also profile
+scope, because the key names the profile.
+
+A tool MAY declare that a credential is **profile-scoped** (`profile_scoped:true` in `describe`, §6.2).
+For such a credential, when a profile is selected:
+
+1. Only the profile scope supplies it. Steps 3, 4, and 6 are skipped, except for the profile-suffixed
+   `env_file` key just described. A profile's own source therefore wins even when an unsuffixed
+   variable is set, which in the table above would outrank the profile's config section.
+2. If the profile scope supplies nothing and the default scope would have, the result is `config`
+   (exit 3), not `auth`. The message says the profile has no credential of its own; `details` names
+   `profile` and `would_use_source` (a variable name or a pointer into the config file, never a
+   value); and `hint` names the profile-scoped ways to supply it.
+3. If neither scope supplies it, the result is the usual missing-credential `auth`.
+
+With no profile selected, resolution is unchanged. Settings still inherit through §13.2; only the
+credential stops. A tool that declares a profile-scoped credential MUST follow this exactly; one that
+declares none follows the table above unchanged.
+
+*Why:* when profiles stand for separate identities (one bot, one account), falling back to the default
+identity silently acts as the wrong one, and an exported unsuffixed variable would otherwise override a
+profile's own file. A credential that is not profile-scoped keeps the shared fallback, which suits
+profiles that are only different views of one identity.
+
 ### §12.2 Never on the command line
 
 No credential is ever accepted as an argument. (A4)
@@ -867,12 +925,14 @@ The active profile is chosen by `--profile` or `<TOOL>_PROFILE`, and the flag wi
 {
   "config_version": 1,
   "default": {
+    "description": "Personal boards.",
     "limit": 25,
     "timeout": "30s",
     "env_file": "~/.secrets/trello.env"
   },
   "profiles": {
     "work": {
+      "description": "Team boards for the platform group.",
       "dataset_ttl": "4h",
       "api_key_file": "~/.secrets/trello-work.key"
     },
@@ -883,23 +943,35 @@ The active profile is chosen by `--profile` or `<TOOL>_PROFILE`, and the flag wi
 }
 ```
 
+The `description` members are valid only for a tool that supports them (rule 6). A tool that does not
+rejects them under rule 2.
+
 | Member | Rule |
 |---|---|
 | `config_version` | The file format version. An unknown value is `config` |
 | `default` | Settings that apply unless a profile overrides them |
 | `profiles` | Named partial overrides of `default` |
+| `description` | Optional, in `default` and in each profile; supported only by some tools (rule 6) |
 
 Rules:
 
-1. The file MUST be JSON. Member names are lowercase setting names.
+1. The file MUST be JSON. Member names are lowercase setting names, apart from `description` (rule 6).
 2. An unrecognised member is `config`. *Why:* a misspelled setting that is silently ignored looks
-   exactly like a setting that does not work.
+   exactly like a setting that does not work. A tool that supports `description` (rule 6) treats it
+   as recognised.
 3. **The file MUST NOT contain a credential value.** A credential member holding a value, rather than
    a path, is `config` at startup. Credentials are referenced only by path: `<name>_file` or
    `env_file`. *Why:* the file can then be read, shared, or committed without leaking anything —
    enforced by the tool, not left to discipline.
 4. The tool never writes or creates the file.
 5. `config`, `profile`, and `config_version` cannot be set from inside the file.
+6. A tool MAY accept a `description` member in `default` and in each profile (since 1.4.1). A tool
+   that does MUST validate it: a string, on one line (no `\n` or `\r`), at most 200 characters, and
+   not empty after trimming whitespace. A violation is `config` at startup, and the hint names the
+   member by pointer, such as `config.json#profiles.work.description`. `description` is not a setting:
+   it is not resolved through §13.2, has no environment variable or flag, and does not appear in
+   `list-config`. Its only reader is `list-profiles` (§7.3). A tool that does not support it rejects
+   it under rule 2.
 
 ### §13.5 Settings
 
@@ -1093,9 +1165,19 @@ No command returning upstream data may offer a table, CSV, or plain-text output 
 `version` (or `--version`) returns an envelope whose `data` holds `tool`, `tool_version`,
 `contract_version`, `writes_enabled`, `mcp_enabled`, `os`, `arch`, and the build commit.
 
-The contract version is `major.minor`:
+The contract version is `major.minor.patch`. The patch component may be omitted when it is zero, so
+`1.4` and `1.4.0` are the same version. A tool reports the exact version it implements in
+`meta.contract_version` and in `version`: a tool implementing 1.4.1 reports `1.4.1`, and one that
+implements 1.4 may report `1.4` or `1.4.0`.
 
-- A change that only adds something bumps the minor version.
+- A change that adds only optional behaviour (MAY) bumps the patch version, provided every tool that
+  conforms to the previous version still conforms unchanged. A patch change never changes an exit
+  code, the meaning of a flag, or the shape of the envelope, and never adds a requirement that an
+  existing tool fails. A tool that supports the optional behaviour MUST follow it exactly. A patch
+  change also never narrows what a caller must accept from a conforming tool. The one exception was
+  1.4.1, which introduced this patch level: callers must accept a three-component
+  `contract_version`.
+- A change that otherwise only adds something bumps the minor version.
 - A change to the meaning of an exit code, the meaning of a flag, or the shape of the envelope bumps
   the major version.
 - A removed flag stays accepted for one further minor version, with a warning naming its

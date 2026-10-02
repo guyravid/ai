@@ -17,7 +17,7 @@ func TestSuccessShape(t *testing.T) {
 	envelope := New("trello", "0.1.0", command("boards.list"))
 	envelope.Data = shape.NewArray()
 	got := string(Encode(envelope, false))
-	want := `{"ok":true,"tool":"trello","command":"boards.list","data":[],"meta":{"contract_version":"1.4","tool_version":"0.1.0"}}` + "\n"
+	want := `{"ok":true,"tool":"trello","command":"boards.list","data":[],"meta":{"contract_version":"1.4.1","tool_version":"0.1.0"}}` + "\n"
 	if got != want {
 		t.Fatalf("got %s want %s", got, want)
 	}

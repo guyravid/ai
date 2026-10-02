@@ -153,6 +153,14 @@ Vendor both templates unchanged, with the drift test from the pattern file:
 `teach config` renders a complete example config file with at least one profile setting more than
 one value, and says plainly that credential entries are paths.
 
+New tools support profile descriptions (contract 1.4.1, §13.4 rule 6): give every profile in the
+example config a one-line `description`, and have the `teach config` profiles aspect explain it.
+
+When profiles stand for separate identities (one bot or one account per profile), mark that credential
+profile-scoped (contract 1.4.2, §12.1): resolve it from the profile scope only, set
+`profile_scoped:true` in `describe`, and say so in the `teach config` credentials aspect. Otherwise
+leave it unmarked and keep the shared fallback.
+
 Write domain topics as Markdown files compiled into the binary: query idioms, identifier formats,
 common multi-step tasks, known quirks.
 

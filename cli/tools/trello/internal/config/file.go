@@ -11,6 +11,7 @@ import (
 	"regexp"
 	"sort"
 	"strings"
+	"unicode/utf8"
 
 	"github.com/guyravid/ai/cli/tools/trello/internal/errs"
 )
@@ -74,6 +75,49 @@ func (f *File) PathMember(profile, key string) (string, error) {
 		return "", fmt.Errorf("%s must be a non-empty path string", f.Pointer(profile, key))
 	}
 	return text, nil
+}
+
+// DescriptionKey is the config file member that says what a section is for. It is not a setting
+// (contract §13.4 rule 6): it is read only by list-profiles.
+const DescriptionKey = "description"
+
+// MaxDescriptionLength is the longest description, in characters (contract §13.4 rule 6).
+const MaxDescriptionLength = 200
+
+// Description returns the description of one section (the named profile, or default when profile
+// is ""), or nil when it has none. LoadFile has already validated it.
+func (f *File) Description(profile string) *string {
+	if f == nil {
+		return nil
+	}
+	raw, ok := f.Section(profile)[DescriptionKey]
+	if !ok {
+		return nil
+	}
+	var text string
+	if err := json.Unmarshal(raw, &text); err != nil {
+		return nil
+	}
+	return &text
+}
+
+// validateDescription checks a description member: a string on one line, at most
+// MaxDescriptionLength characters, and not empty after trimming.
+func validateDescription(raw json.RawMessage) error {
+	var text string
+	if string(bytes.TrimSpace(raw)) == "null" || json.Unmarshal(raw, &text) != nil {
+		return errors.New("it must be a string")
+	}
+	if strings.ContainsAny(text, "\r\n") {
+		return errors.New("it must be a single line")
+	}
+	if utf8.RuneCountInString(text) > MaxDescriptionLength {
+		return fmt.Errorf("it must be at most %d characters", MaxDescriptionLength)
+	}
+	if strings.TrimSpace(text) == "" {
+		return errors.New("it must not be empty")
+	}
+	return nil
 }
 
 type rawFile struct {
@@ -146,6 +190,14 @@ func validateSection(file *File, profile string, section map[string]json.RawMess
 			return fileError(file.Path, member,
 				"The config file sets %s to a value; credentials may only be referenced by path.", key).
 				WithHint(fmt.Sprintf("Replace %s with %s_file=<path to a file holding it>, or use env_file.", key, key))
+		}
+		if key == DescriptionKey {
+			if err := validateDescription(section[key]); err != nil {
+				return fileError(file.Path, member, "The config file member %s is invalid: %s.", member, err.Error()).
+					WithHint(fmt.Sprintf("Set %s to one line of 1 to %d characters saying what the profile is for.",
+						file.Pointer(profile, key), MaxDescriptionLength))
+			}
+			continue
 		}
 		if key == "env_file" || isCredentialFileKey(key, credentials) {
 			if _, err := file.PathMember(profile, key); err != nil {

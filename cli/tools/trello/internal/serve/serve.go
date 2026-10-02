@@ -54,6 +54,12 @@ func Run(ctx context.Context, application *app.App, invocation *app.Invocation) 
 
 // NewServer builds an MCP server publishing the commands offered over a transport.
 func NewServer(application *app.App, transport app.Transport, serverFlags map[string]string) *mcp.Server {
+	return newServer(context.Background(), application, transport, serverFlags)
+}
+
+// newServer is NewServer with a shutdown context: when it ends, tool calls still running are
+// canceled instead of being waited out.
+func newServer(shutdown context.Context, application *app.App, transport app.Transport, serverFlags map[string]string) *mcp.Server {
 	server := mcp.NewServer(
 		&mcp.Implementation{Name: application.Build.Tool, Version: application.Build.Version},
 		&mcp.ServerOptions{Capabilities: &mcp.ServerCapabilities{Tools: &mcp.ToolCapabilities{}}},
@@ -77,6 +83,9 @@ func NewServer(application *app.App, transport app.Transport, serverFlags map[st
 			tool.OutputSchema = output
 		}
 		server.AddTool(tool, func(ctx context.Context, request *mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+			ctx, stop := context.WithCancel(ctx)
+			defer stop()
+			defer context.AfterFunc(shutdown, stop)()
 			response := application.ExecuteTool(ctx, app.ToolCall{
 				Command: command, Arguments: request.Params.Arguments,
 				ServerFlags: serverFlags, Transport: transport,
@@ -101,7 +110,7 @@ func toResult(response *app.Response) *mcp.CallToolResult {
 }
 
 func runStdio(ctx context.Context, application *app.App, serverFlags map[string]string) *app.Response {
-	server := NewServer(application, app.TransportStdio, serverFlags)
+	server := newServer(ctx, application, app.TransportStdio, serverFlags)
 	logLine(application.Stderr, "info", "serve started", map[string]any{
 		"transport": "stdio", "writes_enabled": application.Build.WritesEnabled, "auth": "off",
 	})
