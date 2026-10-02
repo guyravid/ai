@@ -6,7 +6,10 @@
 #   make image      container image of the read-only build (IMAGE_TAGS=mcp for the full build)
 
 TOOL     := trello
-VERSION  ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo 0.1.0-dev)
+# Versions come from this tool's own tags, trello/v<semver>; tags of other tools in the repository
+# are ignored. The prefix is stripped: trello/v1.0.0 builds version 1.0.0. With no such tag, the
+# commit hash is used.
+VERSION  ?= $(patsubst $(TOOL)/v%,%,$(shell git describe --tags --match '$(TOOL)/v*' --always --dirty 2>/dev/null || echo 0.1.0-dev))
 COMMIT   ?= $(shell git rev-parse --short HEAD 2>/dev/null || echo unknown)
 LDFLAGS  := -s -w -X main.version=$(VERSION) -X main.commit=$(COMMIT)
 GOFLAGS  := -trimpath

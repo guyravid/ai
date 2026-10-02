@@ -54,7 +54,10 @@ make build TAGS=readonly OUT=bin/trello-ro-nomcp   # any other combination
 make image                 # container image of the read-only build; IMAGE_TAGS=mcp for the full one
 ```
 
-`VERSION` and `COMMIT` come from `git describe` and `git rev-parse`; override them with
+`VERSION` comes from this tool's own git tags, named `trello/v<semver>`. Tags for other tools in the
+repository are ignored, and the prefix is stripped, so `git tag trello/v1.0.0` builds version
+`1.0.0`. Commits after a tag build as `1.0.0-<n>-g<hash>`, uncommitted changes add `-dirty`, and with
+no tag the commit hash is used. `COMMIT` comes from `git rev-parse`. Override either with
 `make release VERSION=1.2.3`. `trello version` reports both, plus `writes_enabled` and `mcp_enabled`.
 
 A build without the `mcp` tag contains no server code: `serve` answers `refused` with
