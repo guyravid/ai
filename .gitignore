@@ -24,6 +24,7 @@ dist/
 build/
 out/
 cli/tools/trello/bin/
+cli/tools/telegram/bin/
 *.js.map
 *.d.ts.map
 

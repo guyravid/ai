@@ -3,6 +3,8 @@ package app
 import (
 	"bytes"
 	"context"
+	"os"
+	"path/filepath"
 	"regexp"
 	"strings"
 	"testing"
@@ -226,5 +228,103 @@ func TestListProfiles(t *testing.T) {
 		if toolNames(h, transport)["list-profiles"] {
 			t.Errorf("list-profiles must not be offered over %s", transport)
 		}
+	}
+}
+
+func writeConfigFile(t *testing.T, content string) string {
+	t.Helper()
+	path := filepath.Join(t.TempDir(), "config.json")
+	if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	return path
+}
+
+func TestListProfilesEmitsDescriptionOnEveryEntry(t *testing.T) {
+	h := newHarness(t)
+	path := writeConfigFile(t, `{"default":{"description":"Day to day.","limit":9},"profiles":{"work":{"description":"Team boards."},"plain":{"limit":5}}}`)
+	h.env["TRELLO_TIMEOUT_ENVONLY"] = "5s"
+	listed := h.run("list-profiles", "--config", path, "--profile", "work")
+	if listed.exit != 0 {
+		t.Fatalf("exit %d: %s", listed.exit, listed.raw)
+	}
+	want := `"data":[` +
+		`{"name":"default","active":false,"declared_in":[],"description":"Day to day."},` +
+		`{"name":"envonly","active":false,"declared_in":["environment"],"description":null},` +
+		`{"name":"plain","active":false,"declared_in":["config_file"],"description":null},` +
+		`{"name":"work","active":true,"declared_in":["config_file"],"description":"Team boards."}],`
+	if !strings.Contains(listed.raw, want) {
+		t.Errorf("got %s\nwant it to contain %s", listed.raw, want)
+	}
+	if !strings.Contains(listed.raw, `"contract_version":"1.4.1"`) {
+		t.Errorf("a tool that supports descriptions reports 1.4.1: %s", listed.raw)
+	}
+	if strings.Contains(listed.raw, "stripped_empty") {
+		t.Errorf("list-profiles is not empty-stripped: %s", listed.raw)
+	}
+
+	kept := h.run("list-profiles", "--config", path, "--keep-empty")
+	if !strings.Contains(kept.raw, `"name":"plain","active":false,"declared_in":["config_file"],"description":null`) {
+		t.Errorf("--keep-empty changes nothing: %s", kept.raw)
+	}
+
+	human := h.run("list-profiles", "--config", path, "--human")
+	if !strings.Contains(human.raw, "DESCRIPTION") || !strings.Contains(human.raw, "Team boards.") {
+		t.Errorf("--human shows the description: %s", human.raw)
+	}
+}
+
+func TestListProfilesWithNoneDeclaredStaysEmptyDespiteDefaultDescription(t *testing.T) {
+	h := newHarness(t)
+	path := writeConfigFile(t, `{"default":{"description":"Day to day."}}`)
+	listed := h.run("list-profiles", "--config", path)
+	if listed.exit != 0 || len(listed.data()) != 0 {
+		t.Errorf("no declared profile means [] (contract §7.3 rule 1): %s", listed.raw)
+	}
+}
+
+func TestDescriptionIsNotASettingAndIsValidatedEverywhere(t *testing.T) {
+	h := newHarness(t)
+	path := writeConfigFile(t, `{"default":{"description":"Day to day."},"profiles":{"work":{"description":"Team boards."}}}`)
+	config := h.run("list-config", "--config", path, "--profile", "work")
+	if config.exit != 0 || strings.Contains(strings.ToLower(config.raw), `"name":"description"`) {
+		t.Errorf("list-config must not list description as a setting: %s", config.raw)
+	}
+	if strings.Contains(config.raw, "Team boards.") {
+		t.Errorf("list-config must not carry the description: %s", config.raw)
+	}
+	schema := h.run("list-config", "--schema")
+	if !strings.Contains(schema.raw, `"description":{"description":"One line saying what this profile is for.`) ||
+		!strings.Contains(schema.raw, `"maxLength":200`) {
+		t.Errorf("the config schema admits description (string, maxLength 200): %s", schema.raw)
+	}
+	bad := writeConfigFile(t, `{"profiles":{"work":{"description":"one\ntwo"}}}`)
+	for _, args := range [][]string{{"list-config"}, {"list-profiles"}, {"doctor"}, {"boards", "list"}} {
+		failed := h.run(append(args, "--config", bad)...)
+		if failed.exit != 3 || failed.errorCode() != "config" || !strings.Contains(failed.raw, "profiles.work.description") {
+			t.Errorf("%v: want config exit 3 naming profiles.work.description, got exit %d: %s", args, failed.exit, failed.raw)
+		}
+	}
+}
+
+func TestEnvelopeSchemaAcceptsPatchVersion(t *testing.T) {
+	h := newHarness(t)
+	described := h.run("describe")
+	schema, _ := described.doc["data"].(map[string]any)["envelope_schema"].(map[string]any)
+	meta := schema["properties"].(map[string]any)["meta"].(map[string]any)
+	pattern := meta["properties"].(map[string]any)["contract_version"].(map[string]any)["pattern"].(string)
+	matcher := regexp.MustCompile(pattern)
+	for _, version := range []string{"1.4", "1.4.0", "1.4.1"} {
+		if !matcher.MatchString(version) {
+			t.Errorf("pattern %q rejects %s", pattern, version)
+		}
+	}
+	for _, version := range []string{"1", "1.4.", "1.4.1.2", "v1.4"} {
+		if matcher.MatchString(version) {
+			t.Errorf("pattern %q accepts %s", pattern, version)
+		}
+	}
+	if got := described.doc["data"].(map[string]any)["contract_version"]; got != "1.4.1" {
+		t.Errorf("describe reports contract_version %v", got)
 	}
 }

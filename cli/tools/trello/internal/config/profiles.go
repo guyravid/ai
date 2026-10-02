@@ -17,10 +17,14 @@ const (
 	DeclaredInEnvironment = "environment"
 )
 
+// ProfileEntry is one list-profiles record. Description is the config file's description, or nil
+// (reported as null) when the section has none, which includes a profile declared only by
+// variables. The member is always present, never empty-stripped (contract §7.3).
 type ProfileEntry struct {
-	Name       string   `json:"name"`
-	Active     bool     `json:"active"`
-	DeclaredIn []string `json:"declared_in"`
+	Name        string   `json:"name"`
+	Active      bool     `json:"active"`
+	DeclaredIn  []string `json:"declared_in"`
+	Description *string  `json:"description"`
 }
 
 // ProfileList is what list-profiles reports: the entries, and the selected profile when it is not
@@ -68,6 +72,7 @@ func ListProfiles(in Input, environ []string) (*ProfileList, *errs.Error) {
 	if file != nil {
 		for name := range file.Profiles {
 			add(name, DeclaredInFile)
+			bySuffix[ProfileSuffix(name)].Description = file.Description(name)
 		}
 	}
 	for _, segment := range environmentProfiles(in, defs, environ) {
@@ -88,7 +93,8 @@ func ListProfiles(in Input, environ []string) (*ProfileList, *errs.Error) {
 		declared = append(declared, *entry)
 	}
 	sort.Slice(declared, func(i, j int) bool { return declared[i].Name < declared[j].Name })
-	list.Entries = append([]ProfileEntry{{Name: DefaultProfile, Active: selected == "", DeclaredIn: []string{}}}, declared...)
+	defaultEntry := ProfileEntry{Name: DefaultProfile, Active: selected == "", DeclaredIn: []string{}, Description: file.Description("")}
+	list.Entries = append([]ProfileEntry{defaultEntry}, declared...)
 	if selected != "" && bySuffix[ProfileSuffix(selected)] == nil {
 		list.Undeclared = selected
 	}

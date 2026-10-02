@@ -197,7 +197,7 @@ func loadCertificate(certFile, keyFile string, env config.Env, goos string, now 
 }
 
 func runHTTP(ctx context.Context, application *app.App, serverFlags map[string]string, settings *httpSettings) *app.Response {
-	server := NewServer(application, app.TransportHTTP, serverFlags)
+	server := newServer(ctx, application, app.TransportHTTP, serverFlags)
 	handler := harden(mcp.NewStreamableHTTPHandler(func(*http.Request) *mcp.Server { return server },
 		&mcp.StreamableHTTPOptions{SessionTimeout: sessionIdleTime, MaxRequestBodyBytes: maxBodyBytes}),
 		hardening{token: settings.token, health: healthDocument(application), sessions: func() int { return countSessions(server) }})
@@ -210,6 +210,9 @@ func runHTTP(ctx context.Context, application *app.App, serverFlags map[string]s
 		Handler:           handler,
 		ReadHeaderTimeout: 10 * time.Second,
 		TLSConfig:         &tls.Config{MinVersion: tls.VersionTLS12},
+		// Requests inherit the server's context, so a shutdown also ends open event streams and any
+		// tool call still running, instead of Shutdown waiting for them.
+		BaseContext: func(net.Listener) context.Context { return ctx },
 	}
 	if settings.certificate != nil {
 		httpServer.TLSConfig.Certificates = []tls.Certificate{*settings.certificate}
@@ -236,6 +239,9 @@ func runHTTP(ctx context.Context, application *app.App, serverFlags map[string]s
 		shutdownCtx, cancel := context.WithTimeout(context.Background(), shutdownGrace)
 		defer cancel()
 		err = httpServer.Shutdown(shutdownCtx)
+		if errors.Is(err, context.DeadlineExceeded) {
+			err = httpServer.Close()
+		}
 	}
 	logLine(application.Stderr, "info", "serve stopped", map[string]any{"transport": "http"})
 	if err != nil && !errors.Is(err, http.ErrServerClosed) {

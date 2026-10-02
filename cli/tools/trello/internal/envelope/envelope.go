@@ -12,7 +12,7 @@ import (
 	"github.com/guyravid/ai/cli/tools/trello/internal/shape"
 )
 
-const ContractVersion = "1.4"
+const ContractVersion = "1.4.1"
 
 const (
 	maxMessageChars = 512

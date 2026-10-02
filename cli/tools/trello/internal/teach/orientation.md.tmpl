@@ -42,7 +42,7 @@ contract — the response format, error codes, paging, datasets, writes, configu
 | `teach --list` | What else can `teach` explain? |
 | `doctor` | Is this tool set up and working? Run it on any `auth`, `config`, or `network` error |
 | `list-config` | What is it configured as, and where did each value come from? |
-| `list-profiles` | Which profiles can I run it with? (`[]` means none; just omit `--profile`) |
+| `list-profiles` | Which profiles can I run it with? (`[]` means none; just omit `--profile`; a `description`, when present, says what each is for) |
 {{- if .HasDatasets }}
 | `dataset read <id>` | Give me more of a result I collected with `--all` |
 {{- end }}
