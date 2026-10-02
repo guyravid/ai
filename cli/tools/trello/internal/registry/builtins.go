@@ -45,6 +45,7 @@ func Builtins() []*Command {
 		Builtin[noInput](Spec{Name: "doctor", Description: "Check configuration, credentials, network, authentication, clock, and datasets.",
 			Errors: []errs.Code{errs.Config, errs.Auth, errs.Network, errs.Timeout, errs.Upstream}}, false),
 		Builtin[noInput](Spec{Name: "list-config", Description: "Every setting, its value, and where it came from.", Errors: []errs.Code{errs.Usage, errs.Config}}, false),
+		Builtin[noInput](Spec{Name: "list-profiles", Description: "Profiles this tool can run with: default first, or [] when none is declared.", Errors: []errs.Code{errs.Usage, errs.Config}}, false),
 		Builtin[noInput](Spec{Name: "version", Description: "Tool and contract versions and build flavour.", Errors: localErrors}, false),
 		Builtin[noInput](Spec{Name: "serve", Description: "Run as an MCP server over stdio or Streamable HTTP.", Errors: []errs.Code{errs.Usage, errs.Config, errs.Refused}}, false),
 		Builtin[datasetReadInput](Spec{Name: "dataset.read", Description: "Read part of a stored dataset. Never contacts upstream.",

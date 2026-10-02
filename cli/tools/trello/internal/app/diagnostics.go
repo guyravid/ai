@@ -350,3 +350,23 @@ func configSchema() map[string]any {
 		"$defs": map[string]any{"settings": map[string]any{"type": "object", "additionalProperties": false, "properties": properties}},
 	}
 }
+
+// listProfiles reports the profiles the tool can run with (contract §7.3). Names only, never values.
+func (s *session) listProfiles() *Response {
+	var environ []string
+	if s.app.Environ != nil {
+		environ = s.app.Environ()
+	}
+	list, err := config.ListProfiles(config.Input{
+		Tool: s.app.Build.Tool, Prefix: s.app.Build.Prefix, Flags: s.invocation.Flags, Env: s.app.Env,
+		GOOS: s.app.Build.GOOS, Credentials: Credentials,
+	}, environ)
+	if err != nil {
+		return s.fail(err)
+	}
+	if list.Undeclared != "" {
+		warning := config.UndeclaredWarning(s.app.Build.Prefix, list.Undeclared)
+		s.envelope.AddWarning(warning.Code, warning.Message)
+	}
+	return s.discovery(mustValue(list.Entries))
+}

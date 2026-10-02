@@ -41,6 +41,7 @@ func run() int {
 		},
 		Registry:      reg,
 		Env:           os.LookupEnv,
+		Environ:       os.Environ,
 		Now:           time.Now,
 		Stderr:        os.Stderr,
 		Serve:         serveFunc,

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/guyravid/ai/cli/tools/trello/internal/errs"
 	"github.com/guyravid/ai/cli/tools/trello/internal/shape"
@@ -16,7 +17,7 @@ func TestSuccessShape(t *testing.T) {
 	envelope := New("trello", "0.1.0", command("boards.list"))
 	envelope.Data = shape.NewArray()
 	got := string(Encode(envelope, false))
-	want := `{"ok":true,"tool":"trello","command":"boards.list","data":[],"meta":{"contract_version":"1.1","tool_version":"0.1.0"}}` + "\n"
+	want := `{"ok":true,"tool":"trello","command":"boards.list","data":[],"meta":{"contract_version":"1.4","tool_version":"0.1.0"}}` + "\n"
 	if got != want {
 		t.Fatalf("got %s want %s", got, want)
 	}
@@ -136,5 +137,45 @@ func TestFitObjectKeepsData(t *testing.T) {
 	encoded := FitObject(envelope, object, 1024, false)
 	if len(encoded) > 1024 || envelope.Data.IsNull() {
 		t.Fatalf("size %d, data null %v", len(encoded), envelope.Data.IsNull())
+	}
+}
+
+// Strings near the floor once made shrinkToFit loop forever: half a short string plus the marker is
+// no shorter than the string. The cap cannot be met, so the response reports it instead of hanging.
+func TestFitTerminatesWhenStringsCannotShrink(t *testing.T) {
+	var fields []shape.Field
+	for index := range 40 {
+		fields = append(fields, shape.Field{Key: fmt.Sprintf("f%02d", index), Value: shape.String(strings.Repeat("s", 28))})
+	}
+	done := make(chan []byte, 1)
+	go func() {
+		envelope := listEnvelope(1)
+		done <- FitList(envelope, []shape.Value{shape.NewObject(fields...)}, 300, false, func(int) string { return "c" })
+	}()
+	select {
+	case encoded := <-done:
+		if !strings.Contains(string(encoded), `"truncated_reason":"max_bytes_below_minimum"`) {
+			t.Errorf("an unmeetable cap must be reported: %.200s", encoded)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("FitList did not terminate")
+	}
+}
+
+// A string shortened more than once carries one marker, counting the characters actually removed.
+func TestShrinkShortensFromTheOriginal(t *testing.T) {
+	envelope := New("trello", "0.1.0", command("cards.get"))
+	object := shape.NewObject(shape.Field{Key: "desc", Value: shape.String(strings.Repeat("z", 4000))})
+	FitObject(envelope, object, 400, false)
+	desc := envelope.Data.Fields[0].Value.Text()
+	if strings.Count(desc, "…[+") != 1 {
+		t.Fatalf("markers stacked: %q", desc)
+	}
+	kept := strings.Count(desc, "z")
+	if want := fmt.Sprintf("…[+%d chars]", 4000-kept); !strings.HasSuffix(desc, want) {
+		t.Errorf("got %q, want suffix %q", desc[kept:], want)
+	}
+	if len(envelope.Meta.ElidedFields) != 1 || envelope.Meta.ElidedFields[0] != "desc" {
+		t.Errorf("elided = %v", envelope.Meta.ElidedFields)
 	}
 }

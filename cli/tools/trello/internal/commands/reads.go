@@ -5,6 +5,7 @@ import (
 	"context"
 	"net/url"
 	"strconv"
+	"strings"
 
 	"github.com/guyravid/ai/cli/tools/trello/internal/errs"
 	"github.com/guyravid/ai/cli/tools/trello/internal/registry"
@@ -92,7 +93,10 @@ func Reads() []*registry.Command {
 			Errors:      readErrors,
 			Examples:    []registry.Example{{Argv: []string{"boards", "get", "5f2a1b"}, Description: "One board"}},
 		}, func(ctx context.Context, call *registry.Call, in idInput) (shape.Value, error) {
-			return call.Upstream.Do(ctx, &upstream.Request{Method: "GET", Path: resource("boards", in.ID)})
+			// GET /boards/{id} returns a short default field set that omits dateLastActivity and
+			// starred, so ask for every available field explicitly.
+			return call.Upstream.Do(ctx, &upstream.Request{Method: "GET", Path: resource("boards", in.ID),
+				Query: url.Values{"fields": {strings.Join(trello.BoardAvailable[1:], ",")}}})
 		}),
 
 		registry.List[listsListInput, trello.List](registry.Spec{

@@ -153,9 +153,19 @@ func collectStrings(v Value, path string, steps []step, refs *[]StringRef) {
 	}
 }
 
-// ReplaceString shortens the string at ref to keep characters.
-func ReplaceString(v Value, ref StringRef, keep int) Value {
-	return replaceAt(v, ref.steps, func(old Value) Value { return String(Shorten(old.Text(), keep)) })
+// ReplaceString puts text at ref.
+func ReplaceString(v Value, ref StringRef, text string) Value {
+	return replaceAt(v, ref.steps, func(Value) Value { return String(text) })
+}
+
+// TextAt returns the string at ref.
+func TextAt(v Value, ref StringRef) string {
+	var text string
+	replaceAt(v, ref.steps, func(old Value) Value {
+		text = old.Text()
+		return old
+	})
+	return text
 }
 
 func replaceAt(v Value, steps []step, change func(Value) Value) Value {

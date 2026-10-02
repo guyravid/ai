@@ -11,7 +11,7 @@ import (
 var segmentPattern = regexp.MustCompile(`^[a-z][a-z0-9-]*$`)
 
 var reservedGroups = map[string]bool{
-	"tools": true, "describe": true, "teach": true, "doctor": true, "list-config": true,
+	"tools": true, "describe": true, "teach": true, "doctor": true, "list-config": true, "list-profiles": true,
 	"dataset": true, "serve": true, "version": true, "write": true, "help": true,
 }
 
@@ -91,6 +91,9 @@ func validateCommand(command *Command) error {
 		if !valid[code] {
 			return fmt.Errorf("error code %q is not in the contract", code)
 		}
+	}
+	if command.Kind == KindObject && command.Fields == nil {
+		return fmt.Errorf("a command returning upstream data declares fields (contract §8.2)")
 	}
 	return nil
 }

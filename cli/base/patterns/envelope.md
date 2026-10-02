@@ -92,8 +92,11 @@ the contract wins.
 }
 ```
 
-A command's full output schema is this schema with `properties.data` replaced by the command's
-`outputSchema`. That substitution is what an MCP server does to publish a self-contained schema.
+A command's full output schema is this schema with `properties.data` replaced by
+`{"anyOf":[<outputSchema>,{"type":"null"}]}`: a failure carries `data:null`. That substitution is what
+an MCP server does to publish a self-contained schema (contract §6.2, §16.2). The `outputSchema`
+itself must already be open, as contract §6.2 requires: no `required`, no
+`additionalProperties:false`, `"<depth-elided>"` admitted below the record, and no string constraints.
 
 Checks the schema cannot express, to cover in tests:
 
@@ -149,7 +152,7 @@ $ trello cards list --board 5f2a --limit 60 --fields id,name,due
 Upstream returns 20 cards per page, so the tool fetched three pages.
 
 ```json
-{"ok":true,"tool":"trello","command":"cards.list","data":["… 60 records …"],"meta":{"page":{"limit":60,"count":60,"total":214,"total_is_exact":true,"has_more":true,"next_cursor":"eyJ2IjoxLCJjIjoiY2FyZHMubGlzdCIsInUiOiI2MSIsInEiOnsiYm9hcmQiOiI1ZjJhIiwiZmllbGRzIjoiaWQsbmFtZSxkdWUiLCJsaW1pdCI6NjB9fQ","truncated":false},"fields":["id","name","due"],"stripped_empty":true,"sort":"dateLastActivity desc, id asc","contract_version":"1.1","tool_version":"0.3.0"}}
+{"ok":true,"tool":"trello","command":"cards.list","data":["… 60 records …"],"meta":{"page":{"limit":60,"count":60,"total":214,"total_is_exact":true,"has_more":true,"next_cursor":"eyJ2IjoxLCJjIjoiY2FyZHMubGlzdCIsInUiOiI2MSIsInEiOnsiYm9hcmQiOiI1ZjJhIiwiZmllbGRzIjoiaWQsbmFtZSxkdWUiLCJsaW1pdCI6NjB9fQ","truncated":false},"fields":["id","name","due"],"stripped_empty":true,"sort":"dateLastActivity desc, id asc","contract_version":"1.4","tool_version":"0.3.0"}}
 ```
 
 ### Continuing with the cursor alone
@@ -169,7 +172,7 @@ $ trello cards list --board 5f2a --limit 100 --fields '*'
 Full records are large, so the byte cap binds after 41.
 
 ```json
-{"ok":true,"tool":"trello","command":"cards.list","data":["… 41 records …"],"meta":{"page":{"limit":100,"count":41,"total":214,"total_is_exact":true,"has_more":true,"next_cursor":"eyJ2IjoxLCJjIjoiY2FyZHMubGlzdCIs…","truncated":true,"truncated_reason":"max_bytes","dropped":19},"fields":["*"],"stripped_empty":true,"sort":"dateLastActivity desc, id asc","contract_version":"1.1","tool_version":"0.3.0"}}
+{"ok":true,"tool":"trello","command":"cards.list","data":["… 41 records …"],"meta":{"page":{"limit":100,"count":41,"total":214,"total_is_exact":true,"has_more":true,"next_cursor":"eyJ2IjoxLCJjIjoiY2FyZHMubGlzdCIs…","truncated":true,"truncated_reason":"max_bytes","dropped":19},"fields":["*"],"stripped_empty":true,"sort":"dateLastActivity desc, id asc","contract_version":"1.4","tool_version":"0.3.0"}}
 ```
 
 Exit 0. The tool fetched 60 records, fit 41 under `--max-bytes`, and dropped 19 from the end.
@@ -182,7 +185,7 @@ $ trello actions list --board 5f2a
 ```
 
 ```json
-{"ok":true,"tool":"trello","command":"actions.list","data":["…"],"meta":{"page":{"limit":25,"count":25,"total":null,"total_is_exact":false,"has_more":true,"next_cursor":"eyJ2Ijox…","truncated":false},"window":{"since":"2026-09-29T09:00:00Z","until":"2026-09-30T09:00:00Z","source":"default"},"sort":"date desc, id asc","contract_version":"1.1","tool_version":"0.3.0"}}
+{"ok":true,"tool":"trello","command":"actions.list","data":["…"],"meta":{"page":{"limit":25,"count":25,"total":null,"total_is_exact":false,"has_more":true,"next_cursor":"eyJ2Ijox…","truncated":false},"window":{"since":"2026-09-29T09:00:00Z","until":"2026-09-30T09:00:00Z","source":"default"},"sort":"date desc, id asc","contract_version":"1.4","tool_version":"0.3.0"}}
 ```
 
 `source:"default"` says the 24-hour window was chosen by the tool, not the agent. An agent looking for
@@ -197,7 +200,7 @@ $ trello cards list --board 5f2a --all --fields id,name,list,due --limit 25
 ```
 
 ```json
-{"ok":true,"tool":"trello","command":"cards.list","data":["… 25 records …"],"meta":{"page":{"limit":25,"count":25,"total":4213,"total_is_exact":true,"has_more":true,"next_cursor":"eyJ2IjoxLCJjIjoiZGF0YXNldC5yZWFkIiwiZCI6IjNjOWUyYTRmLTdiMWQtNGU4YS05ZjYwLTJkNWM4YjFhN2UzNCIsIm8iOjI1LCJxIjp7ImxpbWl0IjoyNX19","truncated":false},"dataset":{"id":"3c9e2a4f-7b1d-4e8a-9f60-2d5c8b1a7e34","path":"/Users/g/Library/Caches/agentcli/trello/datasets/3c9e2a4f-7b1d-4e8a-9f60-2d5c8b1a7e34.jsonl","record_count":4213,"bytes":612004,"complete":true,"offset":0,"returned":25,"ttl_seconds":3600,"read_hint":"trello dataset read 3c9e2a4f-7b1d-4e8a-9f60-2d5c8b1a7e34 --offset 25 --limit 100"},"fields":["id","name","list","due"],"stripped_empty":true,"sort":"dateLastActivity desc, id asc","contract_version":"1.1","tool_version":"0.3.0"}}
+{"ok":true,"tool":"trello","command":"cards.list","data":["… 25 records …"],"meta":{"page":{"limit":25,"count":25,"total":4213,"total_is_exact":true,"has_more":true,"next_cursor":"eyJ2IjoxLCJjIjoiZGF0YXNldC5yZWFkIiwiZCI6IjNjOWUyYTRmLTdiMWQtNGU4YS05ZjYwLTJkNWM4YjFhN2UzNCIsIm8iOjI1LCJxIjp7ImxpbWl0IjoyNX19","truncated":false},"dataset":{"id":"3c9e2a4f-7b1d-4e8a-9f60-2d5c8b1a7e34","path":"/Users/g/Library/Caches/agentcli/trello/datasets/3c9e2a4f-7b1d-4e8a-9f60-2d5c8b1a7e34.jsonl","record_count":4213,"bytes":612004,"complete":true,"offset":0,"returned":25,"ttl_seconds":3600,"read_hint":"trello dataset read 3c9e2a4f-7b1d-4e8a-9f60-2d5c8b1a7e34 --offset 25 --limit 100"},"fields":["id","name","list","due"],"stripped_empty":true,"sort":"dateLastActivity desc, id asc","contract_version":"1.4","tool_version":"0.3.0"}}
 ```
 
 `--limit 25` sized the response, not the collection. The tool fetched all 4213 records, in the
@@ -214,7 +217,7 @@ The agent now has three ways forward:
 ### Read
 
 ```json
-{"ok":true,"tool":"trello","command":"dataset.read","data":["… 100 records …"],"meta":{"page":{"limit":100,"count":100,"total":4213,"total_is_exact":true,"has_more":true,"next_cursor":"eyJ2IjoxLCJjIjoiZGF0YXNldC5yZWFkIiwiZCI6IjNjOWUyYTRmLTdiMWQtNGU4YS05ZjYwLTJkNWM4YjFhN2UzNCIsIm8iOjEyNSwicSI6eyJsaW1pdCI6MTAwfX0","truncated":false},"dataset":{"id":"3c9e2a4f-7b1d-4e8a-9f60-2d5c8b1a7e34","complete":true,"offset":25,"returned":100,"ttl_seconds":3600},"fields":["id","name","list","due"],"contract_version":"1.1","tool_version":"0.3.0"}}
+{"ok":true,"tool":"trello","command":"dataset.read","data":["… 100 records …"],"meta":{"page":{"limit":100,"count":100,"total":4213,"total_is_exact":true,"has_more":true,"next_cursor":"eyJ2IjoxLCJjIjoiZGF0YXNldC5yZWFkIiwiZCI6IjNjOWUyYTRmLTdiMWQtNGU4YS05ZjYwLTJkNWM4YjFhN2UzNCIsIm8iOjEyNSwicSI6eyJsaW1pdCI6MTAwfX0","truncated":false},"dataset":{"id":"3c9e2a4f-7b1d-4e8a-9f60-2d5c8b1a7e34","complete":true,"offset":25,"returned":100,"ttl_seconds":3600},"fields":["id","name","list","due"],"contract_version":"1.4","tool_version":"0.3.0"}}
 ```
 
 No upstream request. The read reset the dataset's lifetime.
@@ -231,7 +234,7 @@ set.
 ### Upstream failed partway
 
 ```json
-{"ok":false,"tool":"trello","command":"cards.list","data":["… 25 records …"],"error":{"code":"partial","exit_code":13,"message":"Collection stopped after 1800 of an expected 4213 cards: upstream returned 503.","retriable":true,"hint":"trello cards list --board 5f2a --all"},"meta":{"page":{"…":"…"},"dataset":{"id":"…","path":"…","record_count":1800,"complete":false,"incomplete_reason":"upstream_error","offset":0,"returned":25,"ttl_seconds":3600},"errors":[{"page":19,"code":"upstream","upstream_status":503}],"contract_version":"1.1","tool_version":"0.3.0"}}
+{"ok":false,"tool":"trello","command":"cards.list","data":["… 25 records …"],"error":{"code":"partial","exit_code":13,"message":"Collection stopped after 1800 of an expected 4213 cards: upstream returned 503.","retriable":true,"hint":"trello cards list --board 5f2a --all"},"meta":{"page":{"…":"…"},"dataset":{"id":"…","path":"…","record_count":1800,"complete":false,"incomplete_reason":"upstream_error","offset":0,"returned":25,"ttl_seconds":3600},"errors":[{"page":19,"code":"upstream","upstream_status":503}],"contract_version":"1.4","tool_version":"0.3.0"}}
 ```
 
 The 1800 records collected are kept and readable.
@@ -272,11 +275,11 @@ Notes:
 ### Missing `--confirm`
 
 ```console
-$ trello cards create --list 61a0 --name "Fix paging"
+$ trello cards create --list-id 61a0 --name "Fix paging"
 ```
 
 ```json
-{"ok":false,"tool":"trello","command":"cards.create","data":null,"error":{"code":"refused","exit_code":8,"message":"Writes require --confirm.","retriable":false,"hint":"trello cards create --list 61a0 --name \"Fix paging\" --confirm","details":{"reason":"confirmation_required","preview":{"method":"POST","url":"https://api.trello.com/1/cards","headers":{"Authorization":"***REDACTED***","Content-Type":"application/json"},"body":{"idList":"61a0","name":"Fix paging"}}}},"meta":"…"}
+{"ok":false,"tool":"trello","command":"cards.create","data":null,"error":{"code":"refused","exit_code":8,"message":"Writes require --confirm.","retriable":false,"hint":"trello cards create --list-id 61a0 --name \"Fix paging\" --confirm","details":{"reason":"confirmation_required","preview":{"method":"POST","url":"https://api.trello.com/1/cards","headers":{"Authorization":"***REDACTED***","Content-Type":"application/json"},"body":{"idList":"61a0","name":"Fix paging"}}}},"meta":"…"}
 ```
 
 Nothing was sent. The preview shows exactly what would have been.
@@ -284,7 +287,7 @@ Nothing was sent. The preview shows exactly what would have been.
 ### Dry run
 
 ```json
-{"ok":true,"tool":"trello","command":"cards.create","data":{"preview":{"method":"POST","url":"https://api.trello.com/1/cards","headers":{"Authorization":"***REDACTED***","Content-Type":"application/json"},"body":{"idList":"61a0","name":"Fix paging"}}},"meta":{"dry_run":true,"contract_version":"1.1","tool_version":"0.3.0"}}
+{"ok":true,"tool":"trello","command":"cards.create","data":{"preview":{"method":"POST","url":"https://api.trello.com/1/cards","headers":{"Authorization":"***REDACTED***","Content-Type":"application/json"},"body":{"idList":"61a0","name":"Fix paging"}}},"meta":{"dry_run":true,"contract_version":"1.4","tool_version":"0.3.0"}}
 ```
 
 ### Credential on the command line
@@ -317,7 +320,7 @@ duplicate.
   {"name":"clock","status":"pass","detail":"Within 1s of upstream."},
   {"name":"datasets","status":"pass","detail":"~/Library/Caches/agentcli/trello/datasets is writable; 3 datasets, 1.4 MB."},
   {"name":"writes","status":"pass","detail":"Writes enabled in this build."}
-]},"meta":{"contract_version":"1.1","tool_version":"0.3.0"}}
+]},"meta":{"contract_version":"1.4","tool_version":"0.3.0"}}
 ```
 
 ### `doctor` — failing
@@ -331,7 +334,7 @@ duplicate.
   {"name":"clock","status":"skip","detail":"Skipped: needs an authenticated response."},
   {"name":"datasets","status":"pass","detail":"Directory is writable."},
   {"name":"writes","status":"pass","detail":"Writes enabled in this build."}
-]},"error":{"code":"auth","exit_code":4,"message":"A required credential is missing.","retriable":false,"hint":"Set TRELLO_API_TOKEN, or TRELLO_API_TOKEN_FILE=<path>, or api_token_file=<path> in the config file."},"meta":{"contract_version":"1.1","tool_version":"0.3.0"}}
+]},"error":{"code":"auth","exit_code":4,"message":"A required credential is missing.","retriable":false,"hint":"Set TRELLO_API_TOKEN, or TRELLO_API_TOKEN_FILE=<path>, or api_token_file=<path> in the config file."},"meta":{"contract_version":"1.4","tool_version":"0.3.0"}}
 ```
 
 `data` stays populated on failure, and the checks that could not run are `skip`, not missing.
@@ -351,7 +354,7 @@ All seven precedence tiers in one response:
   {"name":"MAX_BYTES","value":32768,"source":"builtin","origin":"builtin","default":32768},
   {"name":"API_KEY","value":null,"set":true,"source":"TRELLO_API_KEY_WORK","origin":"env_profile","default":null},
   {"name":"API_TOKEN","value":null,"set":true,"source":"~/.secrets/trello.env","origin":"file_default","default":null}
-]},"meta":{"contract_version":"1.1","tool_version":"0.3.0"}}
+]},"meta":{"contract_version":"1.4","tool_version":"0.3.0"}}
 ```
 
 Profile `work` is active but sets only `DATASET_TTL` and `BASE_URL`. `LIMIT` and `MAX_PAGES` keep the
@@ -380,7 +383,7 @@ For credentials, `source` names the variable or file, never the value.
     "api_token_file":{"type":"string","description":"Path to a file containing the token. Never the token itself."},
     "env_file":{"type":"string","description":"Path to a KEY=value file of credentials."}
   }}}
-}},"meta":{"contract_version":"1.1","tool_version":"0.3.0"}}
+}},"meta":{"contract_version":"1.4","tool_version":"0.3.0"}}
 ```
 
 There is no `api_key` property, only `api_key_file`. A file that validates cannot hold a credential.

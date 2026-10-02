@@ -62,6 +62,13 @@ type token struct {
 // Parse turns argv into an invocation. It never prints help or reads anything but its arguments.
 // disabled names the mutating commands a read-only build refuses; it is empty when writes are built.
 func Parse(args []string, reg *registry.Registry, disabled []string) (*Invocation, *errs.Error) {
+	positionals, flags := tokenize(args, reg)
+	command, rest, err := resolveCommand(positionals, reg, disabled, flags)
+	return bind(command, rest, flags, err)
+}
+
+// tokenize splits argv into positionals and flags, giving value-taking flags their next argument.
+func tokenize(args []string, reg *registry.Registry) ([]string, []token) {
 	valueFlags := valueTakingFlags(reg)
 	var positionals []string
 	var flags []token
@@ -83,8 +90,27 @@ func Parse(args []string, reg *registry.Registry, disabled []string) (*Invocatio
 		}
 		flags = append(flags, current)
 	}
+	return positionals, flags
+}
 
-	command, rest, err := resolveCommand(positionals, reg, disabled, flags)
+// Recognise returns the command argv names, or nil when it names none. A mutating command that a
+// read-only build refuses is still recognised (contract §3.1, §11.3).
+func Recognise(args []string, reg *registry.Registry, disabled []string) *string {
+	positionals, flags := tokenize(args, reg)
+	command, _, err := resolveCommand(positionals, reg, disabled, flags)
+	if command != nil {
+		return &command.Name
+	}
+	if err != nil && err.Details["reason"] == "writes_disabled" {
+		if name, ok := err.Details["command"].(string); ok {
+			return &name
+		}
+	}
+	return nil
+}
+
+// bind turns a resolved command and its arguments into an invocation.
+func bind(command *registry.Command, rest []string, flags []token, err *errs.Error) (*Invocation, *errs.Error) {
 	if err != nil {
 		return nil, err
 	}
@@ -92,16 +118,6 @@ func Parse(args []string, reg *registry.Registry, disabled []string) (*Invocatio
 		return nil, nil // bare --help
 	}
 	invocation := &Invocation{Command: command, Params: map[string]any{}, Flags: map[string]string{}}
-
-	positionalNames := command.Positional()
-	if len(rest) > len(positionalNames) {
-		return nil, errs.Usagef("Unexpected argument %q for %s.", rest[len(positionalNames)], strings.Join(command.Argv(), " ")).
-			WithHint(registry.ToolName+" describe "+command.Name).
-			WithDetail("unexpected", rest[len(positionalNames)])
-	}
-	for index, value := range rest {
-		invocation.Params[positionalNames[index]] = value
-	}
 
 	for _, flag := range flags {
 		if reserved := registry.ReservedFlag(flag.flag); reserved != nil {
@@ -139,6 +155,18 @@ func Parse(args []string, reg *registry.Registry, disabled []string) (*Invocatio
 			return nil, convErr
 		}
 		invocation.Params[param.Name] = value
+	}
+
+	// Positionals are checked after flags: a mistyped flag strands its value as a positional, and
+	// the flag is the error worth naming (contract §3.3).
+	positionalNames := command.Positional()
+	if len(rest) > len(positionalNames) {
+		return nil, errs.Usagef("Unexpected argument %q for %s.", rest[len(positionalNames)], strings.Join(command.Argv(), " ")).
+			WithHint(registry.ToolName+" describe "+command.Name).
+			WithDetail("unexpected", rest[len(positionalNames)])
+	}
+	for index, value := range rest {
+		invocation.Params[positionalNames[index]] = value
 	}
 	return invocation, nil
 }

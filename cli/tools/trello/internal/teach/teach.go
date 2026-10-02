@@ -388,8 +388,9 @@ A profile is a named, partial set of overrides. Select one with `+"`--profile <n
 - A profile changes only the settings it defines. Everything else keeps its value from the tiers below.
 - A profile exists when the config file declares it under "profiles", or when any %[1]s_<SETTING>_<PROFILE> variable is set for it. Selecting any other name is a config error.
 - In variable names the profile is uppercased, with - replaced by _: profile eu-west reads %[1]s_TIMEOUT_EU_WEST.
-- A profile cannot be named FILE.
-`, in.Data.Prefix)
+- A profile cannot be named FILE or default.
+- `+"`%[2]s list-profiles`"+` lists the profiles you can use: `+"`default`"+` (no `+"`--profile`"+`) first, then each declared profile. An empty list means there are none, so leave `+"`--profile`"+` off.
+`, in.Data.Prefix, in.Data.Tool)
 }
 
 func configFiles(in Input) string {

@@ -93,7 +93,7 @@ func Load(in Input) (*Resolved, *errs.Error) {
 	if profile != "" && !profileExists(in, resolved.File, profile, defs) {
 		return nil, errs.Configf("Profile %q is not declared in the config file or by any %s_<SETTING>_%s variable.",
 			profile, in.Prefix, ProfileSuffix(profile)).
-			WithHint(fmt.Sprintf("Declare it under \"profiles\" in the config file, or run `%s list-config` without --profile.", in.Tool)).
+			WithHint(fmt.Sprintf("Run `%s list-profiles` to see the profiles you can use.", in.Tool)).
 			WithDetail("profile", profile)
 	}
 

@@ -98,20 +98,35 @@ func FitObject(e *Envelope, object shape.Value, maxBytes int, pretty bool) []byt
 }
 
 // shrinkToFit halves the longest string until measure, which sees the elided paths so far, fits.
+// Each string is always shortened from its original text, so the marker's count stays true and
+// markers never stack. Every step strictly lowers how much of one string is kept, down to
+// minShortenedString, so the loop ends even when nothing more can be saved.
 func shrinkToFit(value shape.Value, measure func(shape.Value, []string) int, maxBytes int) (shape.Value, []string) {
 	var elided []string
-	seen := map[string]bool{}
+	originals := map[string]string{} // path -> text before any shortening
+	kept := map[string]int{}         // path -> characters of the original kept so far
 	for measure(value, elided) > maxBytes {
-		refs := shape.LongestStrings(value)
-		if len(refs) == 0 || refs[0].Length <= minShortenedString {
+		shortened := false
+		for _, ref := range shape.LongestStrings(value) {
+			current, wasShortened := kept[ref.Path]
+			if !wasShortened {
+				current = ref.Length
+			}
+			keep := max(current/2, minShortenedString)
+			if keep >= current {
+				continue
+			}
+			if !wasShortened {
+				originals[ref.Path] = shape.TextAt(value, ref)
+				elided = append(elided, ref.Path)
+			}
+			kept[ref.Path] = keep
+			value = shape.ReplaceString(value, ref, shape.Shorten(originals[ref.Path], keep))
+			shortened = true
 			break
 		}
-		longest := refs[0]
-		keep := max(longest.Length/2, minShortenedString)
-		value = shape.ReplaceString(value, longest, keep)
-		if !seen[longest.Path] {
-			seen[longest.Path] = true
-			elided = append(elided, longest.Path)
+		if !shortened {
+			break
 		}
 	}
 	return value, elided

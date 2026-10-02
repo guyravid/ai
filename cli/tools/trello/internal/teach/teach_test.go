@@ -26,7 +26,7 @@ func TestVendoredTemplatesMatchBundle(t *testing.T) {
 
 func TestOrientationUnder4KB(t *testing.T) {
 	for _, writes := range []bool{true, false} {
-		text, err := Render(Input{Data: Data{Tool: "trello", Contract: "1.1", Prefix: "TRELLO", HasDatasets: true,
+		text, err := Render(Input{Data: Data{Tool: "trello", Contract: "1.4", Prefix: "TRELLO", HasDatasets: true,
 			WritesEnabled: writes, Domain: Domain{Summary: strings.Repeat("x", 400)}}}, false, "", "")
 		if err != nil {
 			t.Fatal(err)

@@ -1,6 +1,6 @@
 # Agent CLI Contract
 
-**Contract version `1.1`**
+**Contract version `1.4`**
 
 A conforming tool is a command-line binary that gives an automated agent access to one remote API.
 This document says what such a tool does and why. How to build one is in
@@ -54,8 +54,14 @@ The tool:
    single newline. The only exceptions are `teach` (§6.3), `--help` (§6.4), `--human` (§15), and
    server mode (§16), each of which is reached only by an explicit command or flag.
 2. MUST write that document in a single write, never piece by piece.
-   *Why:* an interrupted process then leaves either nothing or a complete document, never broken
-   JSON.
+   *Why:* a tool that is interrupted then leaves either nothing or a complete document, never broken
+   JSON. The guarantee has a limit: when stdout is a pipe, the operating system accepts only what
+   fits in the pipe's buffer (64 KiB on Linux and macOS) and blocks the write until the reader
+   drains it. A kill that cannot be caught (SIGKILL, an out-of-memory kill), arriving while a larger
+   document is blocked, cuts it off. The default `--max-bytes` (§8.1) fits within that buffer; a
+   caller raising it should treat output that is not valid JSON, together with a non-zero exit, as
+   an interrupted call. SIGINT and SIGTERM are caught, so a write already under way completes before
+   the tool exits.
 3. MUST write error envelopes to stdout, not stderr.
    *Why:* many callers capture only stdout. An error on stderr would look like an empty result.
 4. MUST NOT require anything on stderr to interpret a result. Stderr carries diagnostics only,
@@ -72,7 +78,7 @@ The tool:
 Every command except those listed in §2.1 returns an envelope.
 
 ```json
-{"ok":true,"tool":"trello","command":"cards.list","data":[{"id":"91bc","name":"Fix paging","list":"Doing"}],"meta":{"page":{"limit":25,"count":1,"total":1,"total_is_exact":true,"has_more":false,"next_cursor":null,"truncated":false},"fields":["id","name","list"],"stripped_empty":true,"sort":"dateLastActivity desc, id asc","contract_version":"1.1","tool_version":"0.3.0"}}
+{"ok":true,"tool":"trello","command":"cards.list","data":[{"id":"91bc","name":"Fix paging","list":"Doing"}],"meta":{"page":{"limit":25,"count":1,"total":1,"total_is_exact":true,"has_more":false,"next_cursor":null,"truncated":false},"fields":["id","name","list"],"stripped_empty":true,"sort":"dateLastActivity desc, id asc","contract_version":"1.4","tool_version":"0.3.0"}}
 ```
 
 | Member | Rule |
@@ -115,7 +121,7 @@ context the agent rarely needs.
 ### §3.3 Failure
 
 ```json
-{"ok":false,"tool":"trello","command":"cards.get","data":null,"error":{"code":"not_found","exit_code":5,"message":"No card with id 91zz is visible to this token.","retriable":false,"hint":"trello cards list --board <board-id> --limit 20","details":{"id":"91zz","upstream_status":404}},"meta":{"contract_version":"1.1","tool_version":"0.3.0"}}
+{"ok":false,"tool":"trello","command":"cards.get","data":null,"error":{"code":"not_found","exit_code":5,"message":"No card with id 91zz is visible to this token.","retriable":false,"hint":"trello cards list --board <board-id> --limit 20","details":{"id":"91zz","upstream_status":404}},"meta":{"contract_version":"1.4","tool_version":"0.3.0"}}
 ```
 
 | Member | Rule |
@@ -149,7 +155,7 @@ Each error code has exactly one exit code, and the pairing never changes once pu
 | 3 | `config` | Configuration unreadable or invalid, unknown profile, credential file too permissive, dataset directory unusable | false |
 | 4 | `auth` | Credential missing, or rejected by upstream (401, 403) | false |
 | 5 | `not_found` | The addressed resource does not exist upstream (404) | false |
-| 6 | `validation` | The call was well-formed, but upstream rejected its content (400, 422) | false |
+| 6 | `validation` | The call was well-formed, but upstream rejected its content (such as 400, 413, 422) | false |
 | 7 | `conflict` | Upstream reported a conflict or failed precondition (409, 412) | false |
 | 8 | `refused` | The tool declined: write without `--confirm`, write on a read-only build, server mode not built, secret on the command line | false |
 | 9 | `rate_limited` | Upstream throttled the request (429) | true |
@@ -161,6 +167,9 @@ Each error code has exactly one exit code, and the pairing never changes once pu
 | 15–31 | — | Reserved for future versions of this contract | — |
 | 32–63 | — | Tool-specific. Each MUST be declared in `describe` | — |
 | 130, 143 | `canceled` | Interrupted by SIGINT or SIGTERM | false |
+
+Status codes in the table are examples. The error code follows from what upstream did, not from
+the number alone: a response rejecting the request's content is `validation` whatever its status.
 
 No exit code above 63 is permitted, apart from 130 and 143. *Why:* shells reserve that range, and
 a caller would read those codes as a failure to run the binary at all.
@@ -206,8 +215,8 @@ deep to go.
 | 3 | `describe <name>` | The full schema for one command |
 | 4 | `describe` | The full schema for every command |
 
-Every discovery command, `teach`, `doctor`, and `list-config` MUST work with no configuration file
-and no credential present.
+Every discovery command, `teach`, `doctor`, `list-config`, and `list-profiles` MUST work with no
+configuration file and no credential present.
 
 Discovery output MUST NOT be truncated, and no byte cap applies to it (§8.4). The tool emits it
 complete or fails. *Why:* a truncated list silently hides that a command exists.
@@ -218,7 +227,7 @@ complete or fails. *Why:* a truncated list silently hides that a command exists.
 including the contract-provided ones (`serve` only when server mode is built):
 
 ```json
-{"ok":true,"tool":"trello","command":"tools","data":["boards.get","boards.list","cards.create","cards.get","cards.list","dataset.clear","dataset.list","dataset.read","dataset.rm","dataset.stat","describe","doctor","list-config","teach","tools","version"],"meta":{"contract_version":"1.1","tool_version":"0.3.0"}}
+{"ok":true,"tool":"trello","command":"tools","data":["boards.get","boards.list","cards.create","cards.get","cards.list","dataset.clear","dataset.list","dataset.read","dataset.rm","dataset.stat","describe","doctor","list-config","teach","tools","version"],"meta":{"contract_version":"1.4","tool_version":"0.3.0"}}
 ```
 
 `tools --detail` returns `[{name, description, mutates}]`. Each `description` MUST be one line of at
@@ -234,7 +243,7 @@ narrowed to one command. An unknown name is a `usage` error with `did_you_mean`.
 
 ```json
 {"ok":true,"tool":"trello","command":"describe","data":{
-  "tool":"trello","tool_version":"0.3.0","contract_version":"1.1",
+  "tool":"trello","tool_version":"0.3.0","contract_version":"1.4",
   "writes_enabled":true,"mcp_enabled":false,
   "auth":{"credentials":[{"name":"API_KEY","env":"TRELLO_API_KEY"},{"name":"API_TOKEN","env":"TRELLO_API_TOKEN"}]},
   "exit_codes":[{"code":32,"name":"board_archived","retriable":false,"meaning":"The board is archived and read-only"}],
@@ -277,8 +286,22 @@ publish the same entries unchanged.
 | `sort` | The declared order of list output (§14) |
 | `limits` | The default and maximum `--limit` |
 
+`outputSchema` describes a record as upstream provides it, before shaping. `--fields` (§8.2),
+empty-stripping (§8.3), and the size caps (§8.4) remove or replace values on every call, so an
+`outputSchema` MUST NOT forbid what they produce:
+
+- No object schema lists `required` properties or sets `additionalProperties` to `false`.
+- Every object or array schema nested inside a record also admits the string `"<depth-elided>"`. A
+  record itself (each element of a list, or `data` for a single resource) is never elided.
+- No string schema sets `maxLength`, `pattern`, `enum`, or `const`, since a shortened string ends in
+  `…[+N chars]`.
+
+*Why:* MCP clients may validate structured results against the published schema (§16.2). A schema
+stricter than the shaping rules turns a correct, shaped response into a client-side error.
+
 `envelope_schema` MUST appear once, not per command. A command's full output schema is the envelope
-schema with `data` replaced by that command's `outputSchema`.
+schema with `data` replaced by `{"anyOf":[<outputSchema>,{"type":"null"}]}`, since a failure carries
+`data:null` (§3.1).
 
 No parameter may be marked as, or carry, a secret (§12.2).
 
@@ -302,7 +325,8 @@ cheap. It SHOULD stay under 4 KB. It MUST:
 
 1. Explain in a few sentences which API the tool covers and what an agent would use it for.
 2. Name each command the contract itself provides, each with the question it answers: `tools`,
-   `describe`, `teach`, `doctor`, `list-config`, plus the `dataset` commands in builds that have them.
+   `describe`, `teach`, `doctor`, `list-config`, `list-profiles`, plus the `dataset` commands in
+   builds that have them.
 3. Name the few domain commands that answer the most common questions. It MUST NOT list every
    command; that is what `tools` is for.
 4. State the facts a first-time caller would otherwise get wrong.
@@ -383,7 +407,7 @@ contact upstream, and it MUST succeed with nothing configured.
   {"name":"API_KEY","value":null,"set":true,"source":"TRELLO_API_KEY_WORK","origin":"env_profile","default":null},
   {"name":"API_TOKEN","value":null,"set":false,"source":"builtin","origin":"builtin","default":null,
    "hint":"Set TRELLO_API_TOKEN, or TRELLO_API_TOKEN_FILE=<path to a file holding the token>, or api_token_file=<path> in the config file"}
-]},"meta":{"contract_version":"1.1","tool_version":"0.3.0"}}
+]},"meta":{"contract_version":"1.4","tool_version":"0.3.0"}}
 ```
 
 | Member | Rule |
@@ -398,6 +422,39 @@ For a credential, `value` MUST be `null` and `set` MUST be present. `source` sti
 came from. When a credential is unset, a `hint` SHOULD name every way to supply it.
 
 `list-config --schema` returns the JSON Schema of the config file in `data.schema`.
+
+### §7.3 `list-profiles`
+
+`list-profiles` lists the profiles the tool can run with, so an agent can choose a `--profile`
+without reading configuration files or environment variables. It MUST NOT contact upstream, MUST
+succeed with nothing configured, and MUST NOT be truncated.
+
+```json
+{"ok":true,"tool":"trello","command":"list-profiles","data":[
+  {"name":"default","active":true,"declared_in":[]},
+  {"name":"eu_west","active":false,"declared_in":["environment"]},
+  {"name":"work","active":false,"declared_in":["config_file","environment"]}
+],"meta":{"contract_version":"1.4","tool_version":"0.3.0"}}
+```
+
+| Member | Rule |
+|---|---|
+| `name` | The value `--profile` takes. `default` stands for running without `--profile` |
+| `active` | `true` for the profile this invocation selected (§13.3), or for `default` when none is selected |
+| `declared_in` | Where the profile is declared (§13.3): `config_file`, `environment`, or both. Empty for `default` |
+
+Rules:
+
+1. When no profile is declared, `data` is `[]`: the tool runs only without `--profile`.
+2. Otherwise `default` comes first, then every declared profile, sorted by name. *Why:* listing
+   `default` beside the others makes it plain that running with no profile is one of the choices.
+3. A profile declared in the config file is listed under its name there. A profile declared only by
+   `<TOOL>_<SETTING>_<PROFILE>` variables is listed under the variable's profile segment in
+   lowercase (`TRELLO_TIMEOUT_EU_WEST` lists `eu_west`), and that name selects it. A file entry and
+   variables that map to the same segment are one profile.
+4. Names only: never a setting's value, and never a credential.
+5. A selected profile that is not declared does not fail `list-profiles`: no entry is active, and a
+   warning names the profile. *Why:* a mistyped profile name is exactly when the list is needed.
 
 ## §8 Context discipline
 
@@ -462,8 +519,14 @@ A string longer than `--max-string` is shortened to its first characters followe
 `…[+N chars]`, and its path listed in `meta.elided_fields`. A subtree deeper than `--max-depth` is
 replaced by `"<depth-elided>"`.
 
-If the envelope alone, with no records, exceeds the cap, the cap is ignored for the envelope and
-`truncated_reason` is `"max_bytes_below_minimum"`.
+A list response that has records MUST carry at least one. When not even one whole record fits, the
+tool MUST keep the first and shorten its largest strings, as for a single object, listing each
+shortened path in `meta.elided_fields`. If it still does not fit, the cap is ignored for that
+response, which carries the one record, and `truncated_reason` is `"max_bytes_below_minimum"`.
+`next_cursor` points at the record after it. A response with no records whose envelope alone
+exceeds the cap is likewise sent whole, with the same `truncated_reason`. *Why:* a response with no
+records and a cursor pointing at the same record would send a caller following the cursor round the
+same request forever.
 
 Truncation is exit 0 and `ok:true`. None of this section applies to discovery or `teach` output.
 
@@ -787,11 +850,14 @@ by `_`, so `--profile eu-west` reads `TRELLO_TIMEOUT_EU_WEST`. *Why last:* setti
 set, so matching the longest known setting name leaves the profile as the remainder, with no
 ambiguity.
 
-A profile MUST NOT be named `FILE`, since `TRELLO_API_KEY_FILE` would then be ambiguous.
+A profile MUST NOT be named `FILE`, since `TRELLO_API_KEY_FILE` would then be ambiguous, nor
+`default`, which `list-profiles` uses for running without a profile (§7.3). Both are matched
+without regard to case.
 
 A profile exists when the config file declares it under `profiles`, or when at least one
 `<TOOL>_<SETTING>_<PROFILE>` variable is set for it. Selecting a profile that exists in neither place
-is `config`. *Why:* a mistyped profile name would otherwise silently fall back to the defaults.
+is `config`, and its hint SHOULD point to `list-profiles`. *Why:* a mistyped profile name would
+otherwise silently fall back to the defaults.
 
 The active profile is chosen by `--profile` or `<TOOL>_PROFILE`, and the flag wins.
 
@@ -923,9 +989,10 @@ trello serve --transport http --addr 0.0.0.0:7810 --allow-remote \
 ### §16.2 Tools over MCP
 
 - The server's tool list comes from the same definitions as `describe`, and names, parameters, and
-  types MUST match it exactly. A read-only build lists no mutating tools.
+  types MUST match it exactly. Each tool's `outputSchema` is the command's full output schema (§6.2). A read-only build lists no mutating tools.
 - `teach` is offered as a tool. `tools` and `describe` are not; the protocol's own tool listing
-  replaces them.
+  replaces them. `list-profiles` is not offered either: a server's profile is fixed when it starts
+  (§16.1), so a client has no use for the list.
 - Every per-call flag in §17 is accepted as a tool argument, named as the flag without its leading
   dashes and with `-` replaced by `_` (`--max-bytes` becomes `max_bytes`).
 - A tool call returns the same envelope the equivalent command line would, both as structured content
@@ -981,8 +1048,8 @@ On loopback, TLS is optional: plaintext there never crosses a network.
 ## §17 Reserved names
 
 These command names are reserved, and a tool MUST NOT use them as a group name: `tools`, `describe`,
-`teach`, `doctor`, `list-config`, `dataset`, `serve`, `version`, `write`, `help`. `write` may appear
-only as the optional first segment of a mutating command (§11.1).
+`teach`, `doctor`, `list-config`, `list-profiles`, `dataset`, `serve`, `version`, `write`, `help`.
+`write` may appear only as the optional first segment of a mutating command (§11.1).
 
 These flags are reserved. Every tool MUST implement those that apply to it with exactly this meaning,
 and MUST NOT use any of them for anything else:

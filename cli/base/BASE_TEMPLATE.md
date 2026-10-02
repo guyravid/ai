@@ -31,7 +31,7 @@ envelope       # assembly, serialization, the single write, exit mapping
 datasets       # --all storage, sidecars, cleanup, dataset commands
 render         # --human output, built from a finished envelope
 teach          # orientation, contract, flags, config, and domain topics
-diagnostics    # doctor and list-config
+diagnostics    # doctor, list-config, and list-profiles
 serve          # MCP server; compiled in only when enabled
 ```
 
@@ -89,6 +89,17 @@ Consumers of the registry:
 truth that silently drifts from the struct it describes. If the language cannot derive a schema from
 a type, generate the type from the schema instead.
 
+**Open the derived output schema before publishing it.** Derivers mark fields required and close
+objects, but `--fields`, empty-stripping, and the size caps remove and replace values on every call.
+Contract §6.2 therefore requires an open `outputSchema`, so post-process it once, at registration:
+
+- drop `required`;
+- drop `additionalProperties:false`;
+- let every object or array below the record also be `"<depth-elided>"`;
+- strip `maxLength`, `pattern`, `enum`, and `const` from strings.
+
+`describe` and the MCP server then publish the same open schema.
+
 **Validate at startup.** Fail before handling any command if:
 
 - a name does not match `[a-z][a-z0-9-]*` per segment, or a domain command has one segment;
@@ -96,6 +107,8 @@ a type, generate the type from the schema instead.
 - `readOnly` is not the opposite of `Mutates`, or a name starting with `write` is not mutating;
 - a flag collides with a reserved flag, or a credential-shaped flag is declared;
 - `Collectable` is set without `Paged`, or `TimeWindow` is set on a non-list command;
+- a command returning upstream data declares no `Fields`, or a list command declares no `Sort` or
+  `Limits`;
 - an error code falls outside the contract's set and the declared tool-specific range;
 - a `teach` topic is named `contract`, `flags`, or `config`.
 
@@ -125,7 +138,7 @@ Mapping errors to the contract's codes happens in one place, so it stays consist
 | Credential missing, or upstream 401 / 403 | `auth` |
 | Upstream 404 on the addressed resource | `not_found` |
 | Upstream 404 on the API root itself | `upstream` — a wrong base URL is not a missing record |
-| Upstream 400 / 422 | `validation` |
+| Upstream 400 / 413 / 422 | `validation` |
 | Upstream 409 / 412 | `conflict` |
 | Upstream 429 after retries | `rate_limited` |
 | Deadline elapsed | `timeout` |
@@ -303,6 +316,12 @@ Strip `null`, `""`, `[]`, and `{}` recursively after projection. Keep `false` an
   search on the record count is faster than removing one at a time. Set `next_cursor` to resume at
   the first dropped record.
 - Single object over the cap: shorten its longest strings first, repeatedly, until it fits.
+  Shorten each string from its original text, halving the length kept, never from text already
+  marked: re-marking stacks markers with wrong counts, and half a short string plus the marker is no
+  shorter, so the loop never ends.
+- Not even one record fits: keep the first record and shorten it the same way. A list response
+  that has records always carries one, so `next_cursor` moves forward (contract §8.4). If it still
+  does not fit, send it anyway with `max_bytes_below_minimum`.
 - Never apply any of this to `tools`, `describe`, or `teach`.
 
 ### §8.4 Time windows
@@ -506,6 +525,16 @@ a check whose prerequisite failed, which makes it vanish from the report.
 
 Print the resolved structure from §5.2 directly. Include every setting, set or not. For unset
 credentials, include a hint listing every way to supply them.
+
+### §15.3 `list-profiles`
+
+Collect profile names from two places: the config file's `profiles`, and the environment. For the
+environment, enumerate every variable (a lookup by name is not enough), keep those starting with
+`<PREFIX>_`, and match the longest known setting or credential name (including `<NAME>_FILE`); the
+rest after `_` is the profile segment. Merge entries by segment, keeping the config file's spelling,
+and list environment-only profiles in lowercase. Resolve the selected profile as every command does,
+but do not fail when it is undeclared: mark nothing active and add a warning. Return `[]` when no
+profile is declared, otherwise `default` first. Contract §7.3 has the output.
 
 ## §16 MCP server mode
 

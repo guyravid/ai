@@ -26,7 +26,7 @@ func (a *App) Run(ctx context.Context, args []string, stdout io.Writer, interrup
 		return response.Exit
 	}
 	if code := interrupted(); code != 0 {
-		response = a.errorResponse(nil, errs.CanceledBy(code), pretty)
+		response = a.errorResponse(a.commandName(args), errs.CanceledBy(code), pretty)
 	}
 
 	output := response.Document()
@@ -44,19 +44,37 @@ func (a *App) Run(ctx context.Context, args []string, stdout io.Writer, interrup
 func (a *App) safeRespond(ctx context.Context, args []string, human, pretty bool) (response *Response) {
 	defer func() {
 		if recovered := recover(); recovered != nil {
-			response = a.errorResponse(nil, errs.New(errs.Internal, "The tool failed unexpectedly: %v.", recovered).
+			response = a.errorResponse(a.commandName(args), errs.New(errs.Internal, "The tool failed unexpectedly: %v.", recovered).
 				WithHint("Report this with --verbose output."), pretty)
 		}
 	}()
 	return a.respond(ctx, args, human, pretty)
 }
 
+// commandName is the command argv names, or nil when it names none. Every envelope names its command
+// when argv names one, even when the call fails before or during parsing (contract §3.1).
+func (a *App) commandName(args []string) (name *string) {
+	defer func() {
+		if recover() != nil {
+			name = nil
+		}
+	}()
+	if a.Registry == nil {
+		return nil
+	}
+	var disabled []string
+	if !a.Build.WritesEnabled {
+		disabled = a.MutatingNames
+	}
+	return Recognise(args, a.Registry, disabled)
+}
+
 func (a *App) respond(ctx context.Context, args []string, human, pretty bool) *Response {
 	if a.StartupError != nil {
-		return a.errorResponse(nil, errs.New(errs.Internal, "The command registry is invalid: %s.", a.StartupError.Error()), pretty)
+		return a.errorResponse(a.commandName(args), errs.New(errs.Internal, "The command registry is invalid: %s.", a.StartupError.Error()), pretty)
 	}
 	if err := ScanSecretFlags(args, a.Build.Prefix); err != nil {
-		return a.errorResponse(nil, err, pretty)
+		return a.errorResponse(a.commandName(args), err, pretty)
 	}
 	var disabled []string
 	if !a.Build.WritesEnabled {
@@ -64,7 +82,7 @@ func (a *App) respond(ctx context.Context, args []string, human, pretty bool) *R
 	}
 	invocation, err := Parse(args, a.Registry, disabled)
 	if err != nil {
-		return a.errorResponse(nil, err, pretty)
+		return a.errorResponse(a.commandName(args), err, pretty)
 	}
 	if invocation == nil {
 		return &Response{Text: a.globalHelp(), redactor: secrets.NewRedactor(nil, nil)}

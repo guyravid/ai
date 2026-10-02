@@ -173,7 +173,17 @@ stale with nothing to signal it. It can still be installed from this path.
 
 - Every contract change gets a file in `contract/history/` in the same commit: frontmatter with date,
   version, change class, and any superseded entry; then Summary, Changes, Rationale, and Migration.
-  Corrections go in new files rather than edits to old ones.
+  Corrections go in new files rather than edits to old ones. The `change` class is one of:
+  - `initial`: the first version of the contract.
+  - `minor`: adds something, as contract §18 defines; bumps the minor version.
+  - `major`: changes the meaning of an exit code or flag, or the envelope's shape (§18); bumps the
+    major version.
+  - `editorial`: changes no rule. Fixes an example, a cross-reference, or wording, so that the text
+    agrees with the rules it already states. The version stays the same, and Migration says
+    whether anything copied from the old text needs fixing.
+
+  Choose by effect, not by size. A one-word change that alters what a tool MUST do is `minor` or
+  `major`.
 - A change to the envelope, error codes, flags, or settings touches: the contract,
   `patterns/envelope.md`, `BASE_TEMPLATE.md`, both `teach` templates, the conformance checklist, and
   the verifier. Change them together; drift between them is the most likely defect in this bundle.

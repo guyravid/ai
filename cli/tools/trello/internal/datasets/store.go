@@ -214,7 +214,10 @@ func (s *Store) writeSidecar(sidecar *Sidecar) error {
 	if err != nil {
 		return err
 	}
-	temporary := fmt.Sprintf("%s.meta.json.%d.tmp", sidecar.ID, os.Getpid())
+	// Unique per write, not per process: in serve mode concurrent calls share one pid.
+	var suffix [8]byte
+	_, _ = rand.Read(suffix[:])
+	temporary := fmt.Sprintf("%s.meta.json.%s.tmp", sidecar.ID, hex.EncodeToString(suffix[:]))
 	file, err := s.root.OpenFile(temporary, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0o600)
 	if err != nil {
 		return err

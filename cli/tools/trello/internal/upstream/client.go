@@ -362,6 +362,11 @@ func statusError(response *http.Response, body []byte, request *Request) *errs.E
 		err = errs.New(errs.NotFound, "Trello has no such resource visible to this token.")
 	case status == 400 || status == 422:
 		err = errs.New(errs.Validation, "Trello rejected the request: %s.", firstLine(excerpt))
+	case status == 413:
+		err = errs.New(errs.Validation, "Trello rejected the request as too large: %s.", firstLine(excerpt))
+		if request.Upload != nil {
+			err.WithHint("Trello's attachment limit depends on the account's plan: 10 MB on Free. Attach a link with cards attach-url instead.")
+		}
 	case status == 409 || status == 412:
 		err = errs.New(errs.Conflict, "Trello reported a conflict.")
 	case status == 429:

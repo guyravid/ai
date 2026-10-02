@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"reflect"
+	"slices"
 	"sort"
 	"strings"
 	"time"
@@ -311,7 +312,7 @@ func buildCommand[In, Out any](spec Spec, kind Kind, paged bool) *Command {
 			}
 		}
 	}
-	command.OutputSchema = mustSchema(reflect.TypeFor[Out]())
+	command.OutputSchema = openOutputSchema(mustSchema(reflect.TypeFor[Out]()), kind == KindList)
 	command.decode = func(params map[string]any) (any, error) {
 		encoded, err := json.Marshal(params)
 		if err != nil {
@@ -330,6 +331,74 @@ func buildCommand[In, Out any](spec Spec, kind Kind, paged bool) *Command {
 
 var rawSchema = &jsonschema.Schema{}
 
+// numberSchema describes json.Number, which is a string in Go but a number on the wire.
+var numberSchema = &jsonschema.Schema{Type: "number"}
+
+// depthElided is what --max-depth leaves in place of a subtree (contract §8.4).
+var depthElided any = "<depth-elided>"
+
+// openOutputSchema makes a derived output schema admit every shaped response (contract §6.2).
+// Derivation requires each field without omitempty and closes every object, but --fields,
+// empty-stripping, and the size caps remove and replace values per call. For a list the record is
+// each item; otherwise the record is the schema itself. A record is never depth-elided.
+func openOutputSchema(schema *jsonschema.Schema, list bool) *jsonschema.Schema {
+	if list && schema.Items != nil {
+		record := openSchema(schema.Items, false)
+		schema.Items = nil
+		schema = openSchema(schema, false)
+		schema.Items = record
+		return schema
+	}
+	return openSchema(schema, false)
+}
+
+func openSchema(schema *jsonschema.Schema, nested bool) *jsonschema.Schema {
+	if schema == nil || schema == rawSchema {
+		return schema
+	}
+	schema.Required = nil
+	if isFalseSchema(schema.AdditionalProperties) {
+		schema.AdditionalProperties = nil
+	}
+	if hasType(schema, "string") {
+		schema.MaxLength, schema.Pattern, schema.Enum, schema.Const = nil, "", nil, nil
+	}
+	for name, property := range schema.Properties {
+		schema.Properties[name] = openSchema(property, true)
+	}
+	if schema.Items != nil {
+		schema.Items = openSchema(schema.Items, true)
+	}
+	for index, item := range schema.PrefixItems {
+		schema.PrefixItems[index] = openSchema(item, true)
+	}
+	if schema.AdditionalProperties != nil {
+		schema.AdditionalProperties = openSchema(schema.AdditionalProperties, true)
+	}
+	for _, branches := range [][]*jsonschema.Schema{schema.AnyOf, schema.OneOf, schema.AllOf} {
+		for index, branch := range branches {
+			branches[index] = openSchema(branch, nested)
+		}
+	}
+	if nested && (hasType(schema, "object") || hasType(schema, "array")) {
+		return &jsonschema.Schema{AnyOf: []*jsonschema.Schema{schema, {Const: &depthElided}}}
+	}
+	return schema
+}
+
+func hasType(schema *jsonschema.Schema, name string) bool {
+	return schema.Type == name || slices.Contains(schema.Types, name)
+}
+
+// isFalseSchema reports the schema that matches nothing, as jsonschema-go writes it: {"not":{}}.
+func isFalseSchema(schema *jsonschema.Schema) bool {
+	if schema == nil || schema.Not == nil {
+		return false
+	}
+	encoded, err := json.Marshal(schema)
+	return err == nil && string(encoded) == "false"
+}
+
 func mustSchema(t reflect.Type) *jsonschema.Schema {
 	if t.Kind() == reflect.Interface {
 		return &jsonschema.Schema{}
@@ -338,6 +407,7 @@ func mustSchema(t reflect.Type) *jsonschema.Schema {
 		TypeSchemas: map[reflect.Type]*jsonschema.Schema{
 			reflect.TypeFor[json.RawMessage](): rawSchema,
 			reflect.TypeFor[shape.Value]():     rawSchema,
+			reflect.TypeFor[json.Number]():     numberSchema,
 		},
 	})
 	if err != nil {

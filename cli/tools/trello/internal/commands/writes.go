@@ -4,6 +4,7 @@ package commands
 
 import (
 	"context"
+	"encoding/json"
 	"path/filepath"
 
 	"github.com/guyravid/ai/cli/tools/trello/internal/errs"
@@ -46,6 +47,10 @@ type attachURLInput struct {
 	ID   string `json:"id" jsonschema:"Card id or short link" cli:"positional"`
 	URL  string `json:"url" jsonschema:"Link to attach"`
 	Name string `json:"name,omitempty" jsonschema:"Attachment name shown on the card"`
+}
+
+type cardIDInput struct {
+	ID string `json:"id" jsonschema:"Card id or short link" cli:"positional"`
 }
 
 type attachFileInput struct {
@@ -140,6 +145,30 @@ func Writes() []*registry.Command {
 			// would be sent (base template §13).
 			return &upstream.Request{Method: "POST", Path: resource("cards", in.ID) + "/attachments",
 				Upload: &upstream.Upload{Field: "file", Path: resolved, Name: name, Fields: body("name", name)}}, nil
+		}),
+
+		registry.Write[cardIDInput, trello.Card](registry.Spec{
+			Name:        "cards.archive",
+			Description: "Archive a card. Reversible in Trello; prefer it to delete.",
+			Idempotent:  true,
+			Errors:      writeErrors,
+			Examples: []registry.Example{{Argv: []string{"cards", "archive", "91bc4d", "--confirm"},
+				Description: "Archive a card"}},
+		}, func(ctx context.Context, call *registry.Call, in cardIDInput) (*upstream.Request, error) {
+			return &upstream.Request{Method: "PUT", Path: resource("cards", in.ID), Body: body("closed", "true")}, nil
+		}),
+
+		// Trello answers a delete with no card, only an empty limits object, so data is raw JSON.
+		registry.Write[cardIDInput, json.RawMessage](registry.Spec{
+			Name:        "cards.delete",
+			Description: "Permanently delete a card, with its comments and attachments. Cannot be undone.",
+			Destructive: true,
+			Idempotent:  true,
+			Errors:      writeErrors,
+			Examples: []registry.Example{{Argv: []string{"cards", "delete", "91bc4d", "--confirm"},
+				Description: "Delete a card for good"}},
+		}, func(ctx context.Context, call *registry.Call, in cardIDInput) (*upstream.Request, error) {
+			return &upstream.Request{Method: "DELETE", Path: resource("cards", in.ID)}, nil
 		}),
 	}
 }

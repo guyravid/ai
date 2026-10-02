@@ -196,8 +196,8 @@ func TestToolListMatchesDescribe(t *testing.T) {
 				}
 				continue
 			}
-			data := tool.OutputSchema.(map[string]any)["properties"].(map[string]any)["data"]
-			if canonical(t, data) != canonical(t, entry["outputSchema"]) {
+			data := tool.OutputSchema.(map[string]any)["properties"].(map[string]any)["data"].(map[string]any)["anyOf"].([]any)
+			if canonical(t, data[0]) != canonical(t, entry["outputSchema"]) || canonical(t, data[1]) != `{"type":"null"}` {
 				t.Errorf("%s output data schema differs from describe", tool.Name)
 			}
 		}

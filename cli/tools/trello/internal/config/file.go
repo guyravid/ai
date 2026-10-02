@@ -25,6 +25,9 @@ func ValidateProfileName(name string) error {
 	if strings.EqualFold(name, "file") {
 		return fmt.Errorf("a profile cannot be named FILE")
 	}
+	if strings.EqualFold(name, DefaultProfile) {
+		return fmt.Errorf("a profile cannot be named default, which list-profiles uses for running without one")
+	}
 	return nil
 }
 

@@ -27,8 +27,9 @@ const (
 	TransportHTTP  Transport = "http"
 )
 
-// notOverMCP are replaced by the protocol's own tool listing, or are the server itself.
-var notOverMCP = map[string]bool{"tools": true, "describe": true, "serve": true}
+// notOverMCP are replaced by the protocol's own tool listing, are the server itself, or (list-profiles)
+// are of no use when the profile is fixed at server start (contract §16.2).
+var notOverMCP = map[string]bool{"tools": true, "describe": true, "serve": true, "list-profiles": true}
 
 // notOverHTTP act on the server's own filesystem or configuration, which a remote client does not
 // share (contract §16.3; doctor and list-config by operator decision).
@@ -92,8 +93,9 @@ func ToolInputSchema(command *registry.Command) *jsonschema.Schema {
 	return schema
 }
 
-// ToolOutputSchema is the envelope schema with data replaced by the command's outputSchema
-// (contract §6.2). teach returns Markdown, not an envelope, and has none.
+// ToolOutputSchema is the command's full output schema (contract §6.2, §16.2): the envelope schema
+// with data replaced by anyOf the command's outputSchema and null, since a failure carries
+// data:null. teach returns Markdown, not an envelope, and has none.
 func ToolOutputSchema(command *registry.Command) *jsonschema.Schema {
 	if command.Name == "teach" {
 		return nil
@@ -103,7 +105,7 @@ func ToolOutputSchema(command *registry.Command) *jsonschema.Schema {
 		panic(err)
 	}
 	schema.ID = "" // no longer the shared envelope schema
-	schema.Properties["data"] = command.OutputSchema
+	schema.Properties["data"] = &jsonschema.Schema{AnyOf: []*jsonschema.Schema{command.OutputSchema, {Type: "null"}}}
 	return &schema
 }
 

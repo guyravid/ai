@@ -20,7 +20,7 @@ SDK signatures below were checked against the SDK source. Re-check them before r
   internal/datasets/          # storage, sidecars, cleanup, dataset commands
   internal/render/            # --human
   internal/teach/             # orientation.md.tmpl, shared.md.tmpl (vendored), domain topics
-  internal/diagnostics/       # doctor, list-config
+  internal/diagnostics/       # doctor, list-config, list-profiles
   internal/serve/             # MCP; build tag `mcp`
   internal/conformance/       # the checklist, as tests
 ```
@@ -41,15 +41,19 @@ Everything else from the standard library. Confirm before adding anything.
 
 ## 3. Registry [§2]
 
-Hold types, not schema JSON. The SDK's `AddTool` derives both schemas from type parameters, and
-`jsonschema-go` does the same for `describe`, so the struct is the only source:
+Hold types, not schema JSON. `jsonschema-go` derives both schemas from the input and output types,
+once, at registration, and `describe` and the MCP server publish the same result. The struct is the
+only source:
 
 ```go
 type CardsListInput struct {
-    Board string `json:"board" jsonschema:"Board id"`
-    List  string `json:"list,omitempty" jsonschema:"Only cards in this list"`
+    Board  string `json:"board" jsonschema:"Board id"`
+    ListID string `json:"list_id,omitempty" jsonschema:"Only cards in this list"` // --list is reserved
 }
 ```
+
+Open the derived output schema before storing it (contract §6.2; base template §2): `ForType` makes
+every field without `omitempty` required and closes every object.
 
 Generic entries do not share a type, so the registry stores an interface, and each entry is a closure
 that captures its concrete types and exposes `Definition()`, `RunCLI(args)`, and `Register(*mcp.Server)`
@@ -92,7 +96,9 @@ if _, err := os.Stdout.Write(out); err != nil { os.Exit(1) }
 ```
 
 One `Write` call on the finished buffer satisfies the "single write" rule. `Encode` appends the
-trailing newline.
+trailing newline. Into a pipe, a document larger than the pipe buffer (64 KiB) can still be cut off
+by SIGKILL while the write is blocked; contract §2 states this limit. Do not try to work around it:
+the caught signals (SIGINT, SIGTERM) already let the write finish.
 
 Recover panics in `main` and emit an `internal` envelope. Catch `SIGINT` and `SIGTERM` with
 `signal.NotifyContext`, cancel the context, and exit 130 or 143 with a `canceled` envelope.
@@ -147,7 +153,9 @@ large integers and decimals pass through unchanged.
 
 String caps count runes (`utf8.RuneCountInString`), not bytes.
 
-For the byte cap, marshal once, measure, and binary-search the number of records that fit.
+For the byte cap, marshal once, measure, and binary-search the number of records that fit. When the
+answer is zero, keep the first record and shorten its strings (contract §8.4); never return an empty
+page while records remain.
 
 ## 7. Secrets [§6]
 
@@ -267,8 +275,14 @@ func NewStreamableHTTPHandler(getServer func(*http.Request) *Server, opts *Strea
   deliberately.
 - `CallToolResult` has `Content []Content`, `StructuredContent any`, and `IsError bool`. Put the
   envelope in `StructuredContent` and the same envelope, serialized, in one `*mcp.TextContent`.
-- `AddTool` derives `OutputSchema` from `Out`. Declare `Out` as the envelope type, and the published
-  schema is the composed one the contract describes, with no hand-maintenance.
+- Do not let the generic `AddTool` derive `OutputSchema` from `Out`. It derives a strict schema:
+  `jsonschema-go` marks every field without `omitempty` as required and sets
+  `additionalProperties:false`, which contract §6.2 forbids. Use `(*Server).AddTool(tool, handler)`
+  instead, with the `inputSchema` from the registry and an `OutputSchema` built as follows. Start from
+  the envelope schema, then replace `data` with `{"anyOf":[<open outputSchema>,{"type":"null"}]}`.
+  The raw handler receives `req.Params.Arguments` as `json.RawMessage`. Bind it onto the same input
+  argv parsing produces. Validating the arguments and the result is then the caller's job, so let
+  the substrate do it.
 
 ```go
 srv := mcp.NewServer(&mcp.Implementation{Name: tool, Version: version}, nil)

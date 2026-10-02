@@ -46,9 +46,12 @@ type Build struct {
 type ServeFunc func(ctx context.Context, app *App, invocation *Invocation) *Response
 
 type App struct {
-	Build     Build
-	Registry  *registry.Registry
-	Env       config.Env
+	Build    Build
+	Registry *registry.Registry
+	Env      config.Env
+	// Environ lists the whole environment as KEY=value pairs. Only list-profiles needs it: profiles
+	// declared by variables can be found only by enumerating them. nil means none.
+	Environ   func() []string
 	Now       func() time.Time
 	Stderr    io.Writer
 	Transport http.RoundTripper // injected by tests; nil uses the default transport
@@ -159,6 +162,11 @@ func (a *App) Execute(ctx context.Context, invocation *Invocation) (response *Re
 		return s.doctor(ctx)
 	}
 
+	// list-profiles resolves on its own: an undeclared selected profile, which makes load fail, is
+	// exactly when the list is needed (contract §7.3).
+	if name == "list-profiles" {
+		return s.listProfiles()
+	}
 	if err := s.load(); err != nil {
 		return s.fail(err)
 	}

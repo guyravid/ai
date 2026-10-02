@@ -24,8 +24,8 @@ Dotted, `<group>.<verb>`. The command line is the name split on dots.
   POST, PUT, PATCH, and DELETE; and check GETs too, since some APIs perform actions on GET. A `write`
   name prefix (`write.cards.create`) is optional; if the tool uses it, only mutating commands carry it.
 - Segments are lowercase letters, digits, and hyphens. No group may be a reserved name: `tools`,
-  `describe`, `teach`, `doctor`, `list-config`, `dataset`, `serve`, `version`, `write` (other than as
-  the optional prefix of a mutating command), `help`.
+  `describe`, `teach`, `doctor`, `list-config`, `list-profiles`, `dataset`, `serve`, `version`,
+  `write` (other than as the optional prefix of a mutating command), `help`.
 
 ## From an OpenAPI operation
 
@@ -86,7 +86,7 @@ Record the API's maximum page size. `--all` uses it regardless of `--limit`.
 
 | Upstream | Code | Exit | Note |
 |---|---|---|---|
-| 400, 422 | `validation` | 6 | Upstream rejected the content. Not `usage`: the command line was fine |
+| 400, 413, 422 | `validation` | 6 | Upstream rejected the content, including as too large. Not `usage`: the command line was fine. Not retriable: the same request fails again |
 | 401 | `auth` | 4 | |
 | 403 | `auth` | 4 | Hint should mention permissions or scope, not a missing key |
 | 404 on the addressed resource | `not_found` | 5 | |
@@ -117,3 +117,13 @@ get a tool-specific code between 32 and 63, declared in `describe`.
 gives agents a real schema, and it is the only way to leave out fields that should never be shown or
 stored. Where the shape is genuinely unknown, use raw JSON with a permissive schema, and report it as
 a TODO.
+
+The published `outputSchema` must be open (contract §6.2):
+
+- no `required`;
+- no `additionalProperties:false`;
+- `"<depth-elided>"` admitted below the record;
+- no string constraints.
+
+Responses are shaped per call, and a strict schema rejects correct output. Keep the struct concrete,
+and let the substrate open the derived schema.

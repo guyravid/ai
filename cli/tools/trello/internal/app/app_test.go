@@ -94,6 +94,15 @@ func (f *fakeTrello) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		f.lastBody = body.String()
 		f.mu.Unlock()
 		fmt.Fprint(w, `{"id":"new1","name":"Fix paging","idList":"L1"}`)
+	case r.Method == "PUT" && r.URL.Path == "/1/cards/c1":
+		body := new(bytes.Buffer)
+		_, _ = body.ReadFrom(r.Body)
+		f.mu.Lock()
+		f.lastBody = body.String()
+		f.mu.Unlock()
+		fmt.Fprint(w, `{"id":"c1","name":"Card","closed":true}`)
+	case r.Method == "DELETE" && r.URL.Path == "/1/cards/c1":
+		fmt.Fprint(w, `{"limits":{}}`)
 	default:
 		w.WriteHeader(404)
 	}
@@ -132,8 +141,15 @@ func newHarness(t *testing.T) *harness {
 	h.app = &App{
 		Build: Build{Tool: "trello", Prefix: "TRELLO", Version: "test", WritesEnabled: commands.WritesEnabled,
 			GOOS: "linux", GOARCH: "arm64"},
-		Registry:      reg,
-		Env:           func(name string) (string, bool) { value, ok := h.env[name]; return value, ok },
+		Registry: reg,
+		Env:      func(name string) (string, bool) { value, ok := h.env[name]; return value, ok },
+		Environ: func() []string {
+			var pairs []string
+			for key, value := range h.env {
+				pairs = append(pairs, key+"="+value)
+			}
+			return pairs
+		},
 		Now:           func() time.Time { return fixedNow },
 		MutatingNames: commands.MutatingNames,
 	}

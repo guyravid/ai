@@ -91,10 +91,13 @@ func TestToolOutputSchemaWrapsData(t *testing.T) {
 	}
 	command := h.app.Registry.Get("cards.list")
 	schema := ToolOutputSchema(command)
-	got, _ := json.Marshal(schema.Properties["data"])
+	got, _ := json.Marshal(schema.Properties["data"].AnyOf[0])
 	want, _ := json.Marshal(command.OutputSchema)
 	if string(got) != string(want) {
 		t.Error("data must be the command's outputSchema")
+	}
+	if null := schema.Properties["data"].AnyOf[1]; null.Type != "null" {
+		t.Error("data must also admit null, for failures")
 	}
 	if schema.Properties["meta"] == nil || schema.ID != "" {
 		t.Error("the rest of the envelope schema must be kept, without its $id")
@@ -216,5 +219,79 @@ func TestExecuteToolRecoversPanics(t *testing.T) {
 	response := h.app.ExecuteTool(context.Background(), ToolCall{Command: nil})
 	if !strings.Contains(string(response.Document()), `"code":"internal"`) {
 		t.Errorf("a crash must be internal: %s", response.Document())
+	}
+}
+
+// Shaped responses, and failures, validate against the full output schema (contract §6.2, C6-18,
+// C16-9). Before 1.2, --fields, empty-stripping, and --max-depth all produced violations.
+func TestShapedResponsesMatchFullOutputSchema(t *testing.T) {
+	h := newHarness(t)
+	h.fake.cards = 5
+	cases := []struct {
+		command string
+		args    []string
+	}{
+		{"cards.list", []string{"cards", "list", "--board", "B"}},
+		{"cards.list", []string{"cards", "list", "--board", "B", "--fields", "id,due"}},
+		{"cards.list", []string{"cards", "list", "--board", "B", "--fields", "*", "--max-depth", "1"}},
+		{"cards.list", []string{"cards", "list", "--board", "B", "--max-string", "5", "--fields", "id,desc"}},
+		{"cards.list", []string{"cards", "list", "--board", "B", "--limit", "2", "--max-bytes", "900"}},
+		{"cards.get", []string{"cards", "get", "missing"}},
+		{"boards.list", []string{"boards", "list", "--fields", "name"}},
+		{"actions.list", []string{"actions", "list", "--board", "B", "--fields", "*", "--max-depth", "1"}},
+	}
+	if commands.WritesEnabled {
+		cases = append(cases, struct {
+			command string
+			args    []string
+		}{"cards.create", []string{"cards", "create", "--list-id", "L1", "--name", "x", "--dry-run"}})
+	}
+	for _, tc := range cases {
+		resolved, err := ToolOutputSchema(h.app.Registry.Get(tc.command)).Resolve(nil)
+		if err != nil {
+			t.Fatalf("%s: resolve: %v", tc.command, err)
+		}
+		result := h.run(tc.args...)
+		var instance any
+		if err := json.Unmarshal([]byte(result.raw), &instance); err != nil {
+			t.Fatal(err)
+		}
+		if err := resolved.Validate(instance); err != nil {
+			t.Errorf("%v: %v\n%.400s", tc.args, err, result.raw)
+		}
+	}
+}
+
+// The validation above is not vacuous: a malformed envelope fails, and so does a projected response
+// against the strict schema 1.1 allowed (a required name).
+func TestOutputSchemaValidationRejects(t *testing.T) {
+	h := newHarness(t)
+	h.fake.cards = 3
+	command := h.app.Registry.Get("cards.list")
+	resolved, err := ToolOutputSchema(command).Resolve(nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if resolved.Validate(map[string]any{"ok": "yes"}) == nil {
+		t.Error("a malformed envelope validated")
+	}
+	strict := ToolOutputSchema(command)
+	open := strict.Properties["data"].AnyOf[0]
+	record := *open.Items
+	record.Required = []string{"id", "name"}
+	strictData := *open
+	strictData.Items = &record
+	strict.Properties["data"] = &strictData
+	strictResolved, err := strict.Resolve(nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var instance any
+	_ = json.Unmarshal([]byte(h.run("cards", "list", "--board", "B", "--fields", "id,due").raw), &instance)
+	if strictResolved.Validate(instance) == nil {
+		t.Error("a projected response validated against a schema requiring name")
+	}
+	if err := resolved.Validate(instance); err != nil {
+		t.Errorf("the open schema must accept it: %v", err)
 	}
 }

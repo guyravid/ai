@@ -28,9 +28,10 @@ func (a *App) orientation() teach.Domain {
 		},
 	}
 	if a.Build.WritesEnabled {
-		domain.Summary += " With `--confirm` it can also create, move, and comment on cards, replace descriptions, and attach links or files."
+		domain.Summary += " With `--confirm` it can also create, move, comment on, archive, and delete cards, replace descriptions, and attach links or files."
 		domain.Traps = append(domain.Traps,
 			"`cards update` replaces the whole description. Read it with `cards get` first if you mean to append.",
+			"`cards delete` is permanent, with the card's comments and attachments. Use `cards archive` unless deletion was asked for.",
 			"Commands that change Trello are marked `mutates` in `tools --detail` and never run without `--confirm`.")
 	}
 	return domain

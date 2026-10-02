@@ -61,6 +61,7 @@ run describe -- describe
 run detail   -- tools --detail
 run lc       -- list-config
 run teach    -- teach
+run lp       -- list-profiles
 
 has_cmd() { jq -e --arg n "$1" '.data | index($n)' "$WORK/out/tools.json" >/dev/null; }
 
@@ -165,8 +166,8 @@ fi
 
 section "§5 Command naming"
 
-RESERVED='^(tools|describe|teach|doctor|list-config|dataset|serve|version|write|help)$'
-CONTRACT_CMDS='^(tools|describe|teach|doctor|list-config|version|serve|dataset\.(read|list|stat|rm|clear))$'
+RESERVED='^(tools|describe|teach|doctor|list-config|list-profiles|dataset|serve|version|write|help)$'
+CONTRACT_CMDS='^(tools|describe|teach|doctor|list-config|list-profiles|version|serve|dataset\.(read|list|stat|rm|clear))$'
 
 if jq -e --arg c "$CONTRACT_CMDS" '[.data[] | select(test($c) | not)
       | test("^[a-z][a-z0-9-]*(\\.[a-z][a-z0-9-]*)+$")] | all' "$WORK/out/tools.json" >/dev/null; then
@@ -205,8 +206,8 @@ fi
 section "§6 Discovery"
 
 nc_ok=1
-for n in tools detail describe teach lc; do [ "$(rc $n)" = "0" ] || { nc_ok=0; bad "C6-1" "\`$n\` exited $(rc $n) with nothing configured"; }; done
-[ $nc_ok = 1 ] && ok "C6-1" "discovery, teach, and list-config work with nothing configured"
+for n in tools detail describe teach lc lp; do [ "$(rc $n)" = "0" ] || { nc_ok=0; bad "C6-1" "\`$n\` exited $(rc $n) with nothing configured"; }; done
+[ $nc_ok = 1 ] && ok "C6-1" "discovery, teach, list-config, and list-profiles work with nothing configured"
 
 if jq -e '(.data | type == "array") and ([.data[] | type == "string"] | all) and (.data == (.data | sort))' \
      "$WORK/out/tools.json" >/dev/null; then
@@ -246,6 +247,19 @@ else
   bad "C6-6" "envelope_schema is missing or repeated"
 fi
 
+# Shaping (--fields, empty-stripping, size caps) removes and replaces values, so outputSchema stays open.
+strict_schemas=$(jq '[.data.commands[] | .name as $n | .outputSchema | .. | objects
+    | select(((.required | type) == "array")
+          or (.additionalProperties == false)
+          or (((.type == "string") or ((.type | type) == "array" and (.type | index("string"))))
+              and (has("maxLength") or has("pattern") or has("enum") or has("const"))))
+    | $n] | unique' "$WORK/out/describe.json" 2>/dev/null)
+if [ "$strict_schemas" = "[]" ]; then
+  ok "C6-17" "no outputSchema requires properties, closes objects, or constrains strings"
+else
+  bad "C6-17" "outputSchema forbids shaped output (required, additionalProperties:false, or string constraints): $(echo "$strict_schemas" | jq -c .)"
+fi
+
 run capped -- tools --max-bytes 1
 if [ "$(jq -c '.data' "$WORK/out/capped.json" 2>/dev/null)" = "$(jq -c '.data' "$WORK/out/tools.json")" ]; then
   ok "C6-7" "discovery output is not truncated by --max-bytes"
@@ -263,6 +277,10 @@ fi
 TSIZE=$(wc -c <"$TEACHF" | tr -d ' ')
 [ "$TSIZE" -lt 4096 ] && ok "C6-9" "bare teach is $TSIZE bytes" \
                       || warn "C6-9" "bare teach is $TSIZE bytes; the budget is 4096"
+
+DSIZE=$(wc -c <"$WORK/out/detail.json" | tr -d ' ')
+[ "$DSIZE" -lt 8192 ] && ok "C6-19" "tools --detail is $DSIZE bytes" \
+                      || warn "C6-19" "tools --detail is $DSIZE bytes; the budget is 8192"
 
 topics_ok=1
 for t in "contract" "flags" "config" "--list"; do
@@ -426,7 +444,7 @@ CRED_ENVS=$(jq -r '.data.auth.credentials[]?.env' "$WORK/out/describe.json")
 CANARY_VARS=()
 for v in $CRED_ENVS; do CANARY_VARS+=("$v=$CANARY"); done
 leak=""
-for c in tools describe teach list-config doctor; do
+for c in tools describe teach list-config list-profiles doctor; do
   # shellcheck disable=SC2086
   run "leak_$c" "${CANARY_VARS[@]}" -- $c
   grep -q "$CANARY" "$WORK/out/leak_$c.json" "$WORK/out/leak_$c.err" && leak="$leak $c"
@@ -525,9 +543,56 @@ run profunknown -- list-config --profile nosuchprofile
 [ "$(rc profunknown)" = "3" ] && ok "C13-13" "an unknown profile is config" \
                               || bad "C13-13" "unknown profile gave exit $(rc profunknown), expected 3"
 
-# ---------------------------------------------------------------------------- §14, §15, §16, §18
+run proffile -- list-config --profile FILE
+run profdefault -- list-config --profile default
+case "$(rc proffile) $(rc profdefault)" in
+  [23]\ [23]) ok "C13-16" "profiles named FILE and default are rejected" ;;
+  *)   bad "C13-16" "--profile FILE / default gave exits $(rc proffile) / $(rc profdefault), expected usage or config" ;;
+esac
 
-section "§14 Determinism, §15 --human, §16 MCP, §18 versioning"
+# §7.3 list-profiles: [] with nothing declared; otherwise default first, then names; names only.
+if [ "$(rc lp)" = "0" ] && [ "$(jq -c '.data' "$WORK/out/lp.json" 2>/dev/null)" = "[]" ]; then
+  ok "C7-9" "list-profiles is [] when no profile is declared"
+else
+  bad "C7-9" "list-profiles with nothing declared gave exit $(rc lp): $(head -c 200 "$WORK/out/lp.json")"
+fi
+printf '{"default":{"limit":7},"profiles":{"probe":{"limit":8}}}' >"$WORK/cfg/lp.json"
+run lpmixed "${P}_TIMEOUT_PROBE=5s" "${P}_LIMIT_ENVONLY=6" -- list-profiles --config "$WORK/cfg/lp.json"
+if jq -e '.data | map(.name) == ["default","envonly","probe"]
+          and .[0].active == true and .[0].declared_in == [] and ([.[1:][] | .active] | any | not)
+          and (.[1].declared_in == ["environment"])
+          and (.[2].declared_in | sort == ["config_file","environment"])
+          and all(.[]; keys == ["active","declared_in","name"])' "$WORK/out/lpmixed.json" >/dev/null 2>&1; then
+  ok "C7-10" "list-profiles lists default first, then file and environment profiles by name, names only"
+else
+  bad "C7-10" "list-profiles output wrong: $(jq -c '.data' "$WORK/out/lpmixed.json" 2>/dev/null | head -c 300)"
+fi
+run lpactive "${P}_TIMEOUT_PROBE=5s" -- list-profiles --config "$WORK/cfg/lp.json" --profile probe
+if jq -e '[.data[] | select(.active) | .name] == ["probe"]' "$WORK/out/lpactive.json" >/dev/null 2>&1; then
+  ok "C7-11" "list-profiles marks the selected profile active"
+else
+  bad "C7-11" "the selected profile was not the only active entry"
+fi
+run lpunknown -- list-profiles --config "$WORK/cfg/lp.json" --profile nosuchprofile
+if [ "$(rc lpunknown)" = "0" ] && jq -e '([.data[] | select(.active)] | length == 0) and (.meta.warnings | length > 0)' \
+     "$WORK/out/lpunknown.json" >/dev/null 2>&1; then
+  ok "C7-12" "an undeclared selected profile gives a warning, not a failure"
+else
+  bad "C7-12" "list-profiles --profile nosuchprofile gave exit $(rc lpunknown) or no warning"
+fi
+if jq -e '.error.hint | test("list-profiles")' "$WORK/out/profunknown.json" >/dev/null 2>&1; then
+  ok "C13-18" "the undeclared-profile hint points to list-profiles"
+else
+  warn "C13-18" "the undeclared-profile hint does not mention list-profiles (a SHOULD)"
+fi
+
+run barenum "${P}_TIMEOUT=30" -- list-config
+[ "$(rc barenum)" = "3" ] && ok "C13-17" "a duration without a unit is config" \
+                          || bad "C13-17" "${P}_TIMEOUT=30 gave exit $(rc barenum), expected 3"
+
+# ---------------------------------------------------------------------------- §14, §15, §16, §17, §18
+
+section "§14 Determinism, §15 --human, §16 MCP, §17 reserved names, §18 versioning"
 
 run describe2 -- describe
 cmp -s "$WORK/out/describe.json" "$WORK/out/describe2.json" && ok "C14-1" "identical calls give identical bytes" \
@@ -567,6 +632,18 @@ case "$MCP" in
   true) skip "C16-1" "MCP is built in; test the server with an MCP client" ;;
   *)    bad "C16-1" "describe.mcp_enabled is not a boolean" ;;
 esac
+
+# §17 reserved flags and §12.2 credential flags may never be a command's own parameter flag.
+RESERVED_FLAGS='["--pretty","--human","--fields","--keep-empty","--limit","--cursor","--max-bytes","--max-string",
+  "--max-depth","--max-pages","--since","--until","--all","--offset","--confirm","--dry-run","--profile","--config",
+  "--dataset-dir","--timeout","--budget","--timing","--deterministic","--verbose","--schema","--detail","--list",
+  "--transport","--addr","--allow-remote","--token-file","--tls-cert-file","--tls-key-file",
+  "--tls-terminated-upstream","--version","--help","--api-key","--key","--token","--password","--secret","--credential"]'
+clashes=$(jq -c --argjson reserved "$RESERVED_FLAGS" \
+  '[.data.commands[] | .name as $n | (."x-cli".flags // {}) | to_entries[]
+    | select(.value as $f | $reserved | index($f)) | "\($n) \(.value)"]' "$WORK/out/describe.json")
+[ "$clashes" = "[]" ] && ok "C17-1" "no parameter flag is a reserved or credential flag" \
+                      || bad "C17-1" "parameter flags reuse reserved names: $clashes"
 
 run version -- version
 run version2 -- --version
