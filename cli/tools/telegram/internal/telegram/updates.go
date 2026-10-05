@@ -94,10 +94,8 @@ func Flatten(raw shape.Value) (Parsed, bool) {
 			record = append(record, shape.Field{Key: "reply_to_message_id", Value: value})
 		}
 	}
-	if document, ok := container.Get("document"); ok {
-		if name, ok := document.Get("file_name"); ok && !name.IsNull() {
-			record = append(record, shape.Field{Key: "document", Value: shape.NewObject(shape.Field{Key: "file_name", Value: name})})
-		}
+	if document, ok := documentRecord(container); ok {
+		record = append(record, shape.Field{Key: "document", Value: document})
 	}
 	if fileID := largestPhoto(container); fileID != "" {
 		record = append(record, shape.Field{Key: "photo", Value: shape.String(fileID)})
@@ -139,6 +137,20 @@ func pick(object shape.Value, keys ...string) ([]shape.Field, string, string) {
 		}
 	}
 	return fields, id, username
+}
+
+// documentRecord reduces a message's Document to the members an agent needs, shared by update and
+// send records. It reports false when the message has no document or none of the members.
+func documentRecord(container shape.Value) (shape.Value, bool) {
+	document, ok := container.Get("document")
+	if !ok || document.Kind != shape.Object {
+		return shape.Value{}, false
+	}
+	fields, _, _ := pick(document, "file_id", "file_unique_id", "file_name", "mime_type", "file_size")
+	if len(fields) == 0 {
+		return shape.Value{}, false
+	}
+	return shape.NewObject(fields...), true
 }
 
 // largestPhoto returns the file_id of the largest PhotoSize of a message, by pixels, the later

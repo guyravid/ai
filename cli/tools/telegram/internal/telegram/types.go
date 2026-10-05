@@ -74,7 +74,11 @@ type UpdateFrom struct {
 }
 
 type UpdateDocument struct {
-	FileName string `json:"file_name,omitempty"`
+	FileID       string `json:"file_id,omitempty"`
+	FileUniqueID string `json:"file_unique_id,omitempty"`
+	FileName     string `json:"file_name,omitempty"`
+	MimeType     string `json:"mime_type,omitempty"`
+	FileSize     int64  `json:"file_size,omitempty"`
 }
 
 // UpdateDefault and UpdateAvailable are the fields of updates.list.
@@ -82,5 +86,5 @@ var (
 	UpdateDefault   = []string{"update_id", "type", "date", "chat.id", "from.username", "message_id", "text"}
 	UpdateAvailable = []string{"update_id", "type", "date", "chat.id", "chat.type", "chat.title", "chat.username",
 		"from.id", "from.username", "from.first_name", "message_id", "text", "caption", "reply_to_message_id",
-		"document.file_name", "photo"}
+		"document.file_id", "document.file_unique_id", "document.file_name", "document.mime_type", "document.file_size", "photo"}
 )

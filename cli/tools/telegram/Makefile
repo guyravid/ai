@@ -50,6 +50,7 @@ test:
 
 # Contract conformance against both binaries (skills/scaffold-api-cli/scripts/verify_conformance.sh).
 verify: all
+	bash ../../skills/scaffold-api-cli/scripts/check_checklist.sh
 	bash ../../skills/scaffold-api-cli/scripts/verify_conformance.sh bin/$(TOOL) TELEGRAM
 	bash ../../skills/scaffold-api-cli/scripts/verify_conformance.sh bin/$(TOOL)-ro TELEGRAM
 

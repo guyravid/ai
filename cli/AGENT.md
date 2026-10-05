@@ -189,8 +189,8 @@ stale with nothing to signal it. It can still be installed from this path.
 - A change to the envelope, error codes, flags, or settings touches: the contract,
   `patterns/envelope.md`, `BASE_TEMPLATE.md`, both `teach` templates, the conformance checklist, and
   the verifier. Change them together; drift between them is the most likely defect in this bundle.
-- Regenerate the conformance checklist from the contract after every change, rather than editing it
-  by hand.
+- Update the conformance checklist in the same change, then run
+  `skills/scaffold-api-cli/scripts/check_checklist.sh`.
 - When the skill triggers on the wrong requests, revise its `description` before its body.
 - Command names are dotted (`cards.list`), which differs from the verb-first underscore convention in
   `../mcps/CLAUDE.md`. Dotted names map to the command line without a lookup table and are valid MCP

@@ -6,7 +6,7 @@ The contract is authoritative; if this list and the contract disagree, fix this 
 reused or renumbered, so tests and notes that cite one stay valid; a new check takes the next free
 number in its section.
 
-Last regenerated from contract 1.4.2: every MUST and MUST NOT has a check, and a SHOULD with a
+Last updated for contract 1.4.2: every MUST and MUST NOT has a check, and a SHOULD with a
 measurable budget has one reported as a warning.
 
 `../scripts/verify_conformance.sh` runs the items marked **auto** against a built binary, with

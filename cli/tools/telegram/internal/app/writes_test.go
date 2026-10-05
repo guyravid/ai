@@ -7,6 +7,7 @@ import (
 	"mime/multipart"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -474,5 +475,32 @@ func TestOnlyAckEverSendsAnOffset(t *testing.T) {
 	acks := h.fake.all()[before:]
 	if len(acks) != 1 || !strings.Contains(acks[0].body, `"offset":2`) {
 		t.Errorf("the ack is the one request with an offset: %+v", acks)
+	}
+}
+
+func TestSendResultsCarryTheUploadedFileAndTheReplyLink(t *testing.T) {
+	h := writesHarness(t)
+	file := writeTemp(t, "report.txt", "body")
+	const header = `{"ok":true,"result":{"message_id":40,"date":1790000000,"chat":{"id":111111111,"type":"private"},`
+	h.fake.override["sendDocument"] = func(int) (int, string) {
+		return 200, header + `"document":{"file_id":"D1","file_unique_id":"U1","file_name":"report.txt","mime_type":"text/plain","file_size":4}}}`
+	}
+	h.fake.override["sendPhoto"] = func(int) (int, string) {
+		return 200, header + `"photo":[{"file_id":"s","width":90,"height":60},{"file_id":"big","width":1280,"height":853},{"file_id":"m","width":320,"height":213}]}}`
+	}
+	h.fake.override["sendMessage"] = func(int) (int, string) {
+		return 200, header + `"text":"x","reply_to_message":{"message_id":33,"text":"orig"}}}`
+	}
+
+	document := h.run("messages", "send-document", "--file", file, "--confirm").object()
+	want := map[string]any{"file_id": "D1", "file_unique_id": "U1", "file_name": "report.txt", "mime_type": "text/plain", "file_size": float64(4)}
+	if !reflect.DeepEqual(document["document"], want) || document["photo"] != nil {
+		t.Errorf("send-document result %v", document)
+	}
+	if photo := h.run("messages", "send-photo", "--file", file, "--confirm").object(); photo["photo"] != "big" || photo["document"] != nil {
+		t.Errorf("send-photo result %v, want the largest size's file_id", photo)
+	}
+	if reply := h.run("messages", "send", "--text", "x", "--reply-to", "33", "--confirm").object(); reply["reply_to_message_id"] != float64(33) {
+		t.Errorf("send result %v", reply)
 	}
 }

@@ -137,3 +137,29 @@ func TestSentRecordAndAckRecord(t *testing.T) {
 		t.Errorf("ack record %s", got)
 	}
 }
+
+func TestSentRecordCarriesTheDocumentPhotoAndReplyLink(t *testing.T) {
+	document := SentRecord(parse(t, `{"message_id":31,"chat":{"id":5,"type":"private"},"date":1790000000,"caption":"c",
+		"document":{"file_id":"D","file_unique_id":"U","file_name":"r.pdf","mime_type":"application/pdf","file_size":2048,"thumbnail":{"file_id":"t"}}}`))
+	if got := string(document.Marshal()); got != `{"message_id":31,"date":"2026-09-21T14:13:20Z","chat":{"id":5,"type":"private"},"caption":"c",`+
+		`"document":{"file_id":"D","file_unique_id":"U","file_name":"r.pdf","mime_type":"application/pdf","file_size":2048}}` {
+		t.Errorf("document record %s", got)
+	}
+
+	photo := SentRecord(parse(t, `{"message_id":32,"photo":[{"file_id":"s","width":90,"height":60},{"file_id":"l","width":1280,"height":853},{"file_id":"m","width":320,"height":213}]}`))
+	if got, _ := photo.Get("photo"); got.Text() != "l" {
+		t.Errorf("photo = %s, want the largest size", got.Raw)
+	}
+
+	reply := SentRecord(parse(t, `{"message_id":34,"text":"x","reply_to_message":{"message_id":33,"text":"original"}}`))
+	if got := string(reply.Marshal()); got != `{"message_id":34,"text":"x","reply_to_message_id":33}` {
+		t.Errorf("reply record %s", got)
+	}
+}
+
+func TestSentRecordOmitsWhatTheResponseLacks(t *testing.T) {
+	plain := SentRecord(parse(t, `{"message_id":9,"text":"hi","document":{},"photo":[],"reply_to_message":{}}`))
+	if got := string(plain.Marshal()); got != `{"message_id":9,"text":"hi"}` {
+		t.Errorf("record %s: absent fields must be omitted, with no nulls or empty objects", got)
+	}
+}

@@ -8,17 +8,23 @@ import (
 )
 
 // SentMessage is the record a send returns. The raw Message is much larger; an agent needs the
-// message_id to pass to `updates wait`. TODO(M9): confirm the fields against a live sendMessage.
+// message_id to pass to `updates wait`.
 type SentMessage struct {
 	MessageID json.Number `json:"message_id"`
 	Date      string      `json:"date,omitempty"`
 	Chat      *UpdateChat `json:"chat,omitempty"`
 	Text      string      `json:"text,omitempty"`
 	Caption   string      `json:"caption,omitempty"`
+
+	ReplyToMessageID int64           `json:"reply_to_message_id,omitempty"`
+	Document         *UpdateDocument `json:"document,omitempty"`
+	Photo            string          `json:"photo,omitempty"`
 }
 
 // SentDefault is every field of a send result; there is no --fields on a write.
-var SentDefault = []string{"message_id", "date", "chat.id", "chat.type", "text", "caption"}
+var SentDefault = []string{"message_id", "date", "chat.id", "chat.type", "text", "caption",
+	"reply_to_message_id", "document.file_id", "document.file_unique_id", "document.file_name", "document.mime_type",
+	"document.file_size", "photo"}
 
 // AckResult is the data of updates.ack.
 type AckResult struct {
@@ -45,6 +51,17 @@ func SentRecord(raw shape.Value) shape.Value {
 		if value, ok := raw.Get(key); ok && !value.IsNull() {
 			record = append(record, shape.Field{Key: key, Value: value})
 		}
+	}
+	if reply, ok := raw.Get("reply_to_message"); ok {
+		if value, ok := reply.Get("message_id"); ok && !value.IsNull() {
+			record = append(record, shape.Field{Key: "reply_to_message_id", Value: value})
+		}
+	}
+	if document, ok := documentRecord(raw); ok {
+		record = append(record, shape.Field{Key: "document", Value: document})
+	}
+	if fileID := largestPhoto(raw); fileID != "" {
+		record = append(record, shape.Field{Key: "photo", Value: shape.String(fileID)})
 	}
 	return shape.NewObject(record...)
 }

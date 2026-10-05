@@ -7,7 +7,7 @@ writes: true
 To delegate a question to a person and read their answer:
 
 1. `{{tool}} messages send --text "<question>" --confirm` returns the sent message, including its
-   `message_id`.
+   `message_id` (and `reply_to_message_id` when it replied to one).
 2. `{{tool}} updates wait --after-message <message_id> --max-wait 5m` blocks until a message newer
    than that arrives in the same chat, and returns it.
 

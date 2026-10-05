@@ -63,6 +63,8 @@ func (f *fakeTrello) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	switch {
 	case r.Method == "GET" && r.URL.Path == "/1/members/me/boards":
 		fmt.Fprint(w, `[{"id":"b2","name":"Beta","closed":false,"desc":""},{"id":"b1","name":"Alpha","closed":false}]`)
+	case r.Method == "GET" && r.URL.Path == "/1/members/me":
+		fmt.Fprint(w, `{"id":"m1","username":"tester","fullName":"Test User"}`)
 	case r.Method == "GET" && r.URL.Path == "/1/boards/B/cards":
 		var items []string
 		for i := 0; i < f.cards; i++ {

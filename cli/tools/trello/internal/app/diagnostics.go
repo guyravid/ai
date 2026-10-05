@@ -72,7 +72,7 @@ func (s *session) doctor(ctx context.Context) *Response {
 	authCheck := check{Name: "auth", Status: statusSkip}
 	clockCheck := check{Name: "clock", Status: statusSkip, Detail: "Skipped: needs an authenticated response."}
 	switch {
-	case credentialsCheck.Status != statusPass:
+	case credentialsCheck.Status == statusFail || credentialsCheck.Status == statusSkip:
 		authCheck.Detail = "Skipped: credentials incomplete."
 	case networkCheck.Status != statusPass:
 		authCheck.Detail = "Skipped: upstream unreachable."

@@ -6,7 +6,7 @@ summary: The bot's update queue: what reading shows, the 100-update window, and 
 Telegram holds everything sent to the bot as a queue of updates, each with a growing `update_id`.
 `{{tool}} updates list` flattens each into one record: `update_id`, `type` (`message`,
 `edited_message`, `channel_post`, `callback_query`, `my_chat_member`, ...), `date`, `chat`, `from`,
-`message_id`, `text`, `caption`, `reply_to_message_id`, `document.file_name`, and `photo` (the
+`message_id`, `text`, `caption`, `reply_to_message_id`, `document` (`file_id`, `file_unique_id`, `file_name`, `mime_type`, `file_size`), and `photo` (the
 `file_id` of the largest size). Dates are RFC 3339 UTC. The default fields are
 `update_id,type,date,chat.id,from.username,message_id,text`.
 

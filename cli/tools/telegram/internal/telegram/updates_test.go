@@ -101,14 +101,25 @@ func TestFlattenCallbackQueryUsesNestedMessage(t *testing.T) {
 
 func TestFlattenDocumentAndPhoto(t *testing.T) {
 	parsed := flatten(t, `{"update_id":1,"message":{"message_id":1,"chat":{"id":1,"type":"private"},"date":1790000000,"caption":"look",
-		"document":{"file_id":"D","file_name":"report.pdf"},
+		"document":{"file_id":"D","file_unique_id":"U","file_name":"report.pdf","mime_type":"application/pdf","file_size":2048},
 		"photo":[{"file_id":"small","width":90,"height":60},{"file_id":"large","width":1280,"height":853},{"file_id":"mid","width":320,"height":213}]}}`)
 	document, _ := parsed.Record.Get("document")
-	if string(document.Marshal()) != `{"file_name":"report.pdf"}` {
+	if string(document.Marshal()) != `{"file_id":"D","file_unique_id":"U","file_name":"report.pdf","mime_type":"application/pdf","file_size":2048}` {
 		t.Errorf("document = %s", document.Marshal())
 	}
 	if photo, _ := parsed.Record.Get("photo"); photo.Text() != "large" {
 		t.Errorf("photo = %s, want the largest size", photo.Raw)
+	}
+}
+
+func TestFlattenDocumentWithOnlyAFileName(t *testing.T) {
+	parsed := flatten(t, `{"update_id":1,"message":{"message_id":1,"chat":{"id":1,"type":"private"},"date":1790000000,"document":{"file_name":"a.txt"}}}`)
+	if document, _ := parsed.Record.Get("document"); string(document.Marshal()) != `{"file_name":"a.txt"}` {
+		t.Errorf("document = %s", document.Marshal())
+	}
+	parsed = flatten(t, `{"update_id":1,"message":{"message_id":1,"chat":{"id":1,"type":"private"},"date":1790000000,"document":{}}}`)
+	if _, ok := parsed.Record.Get("document"); ok {
+		t.Error("an empty document must be omitted")
 	}
 }
 

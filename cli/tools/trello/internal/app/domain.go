@@ -17,6 +17,26 @@ import (
 	"github.com/guyravid/ai/cli/tools/trello/internal/shape"
 )
 
+// typedParam restores a parameter that a cursor stored as text to the type the command declares,
+// so a non-string parameter survives a round trip through --cursor.
+func typedParam(command *registry.Command, name, text string) any {
+	param := command.Param(name)
+	if param == nil {
+		return text
+	}
+	switch param.Type {
+	case registry.TypeInteger:
+		if number, err := strconv.ParseInt(text, 10, 64); err == nil {
+			return number
+		}
+	case registry.TypeBoolean:
+		if flag, err := strconv.ParseBool(text); err == nil {
+			return flag
+		}
+	}
+	return text
+}
+
 // previewStringChars bounds each value in a refusal's preview so error.details stays small.
 const previewStringChars = 200
 
@@ -101,7 +121,7 @@ func (s *session) resolveList() (*listRequest, *errs.Error) {
 			case "limit":
 				limitFromCursor = value
 			default:
-				request.params[key] = value
+				request.params[key] = typedParam(command, key, value)
 			}
 		}
 		request.start = cursor.U
