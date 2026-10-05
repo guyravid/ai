@@ -195,3 +195,32 @@ stale with nothing to signal it. It can still be installed from this path.
 - Command names are dotted (`cards.list`), which differs from the verb-first underscore convention in
   `../mcps/CLAUDE.md`. Dotted names map to the command line without a lookup table and are valid MCP
   tool names. The divergence is deliberate.
+
+### Release tags
+
+Every change to the contract or to a tool under `tools/` ends with a tag. Tags are
+`<scope>/v<MAJOR>.<MINOR>.<PATCH>`, where scope is `contract` or the tool's directory name:
+`contract/v1.4.2`, `trello/v1.1.1`, `telegram/v1.1.0`. A tool's build reads its version from its
+own tag (prefix stripped), so a missing tag means the binary reports a commit hash instead of a
+version.
+
+When a change touches either, the agent:
+
+1. Finds the current version: `git tag --list '<scope>/v*' --sort=-v:refname | head -1`.
+2. Proposes the next one and says why:
+   - Contract: the version and `change` class from the new `contract/history/` entry. The tag must
+     match the version in `CONTRACT.md`. `editorial` changes get no tag.
+   - Tool: major if a command, flag, field default, or exit code changes in a way that breaks
+     existing callers; minor if it adds commands, flags, or fields; patch for fixes and docs.
+     If the tool now conforms to a new contract version, bump at least minor.
+3. Once the change is committed, reminds the user to tag and push, with the exact commands:
+
+   ```sh
+   git tag -a <scope>/vX.Y.Z -m "<scope> vX.Y.Z: <one-line summary>"
+   git push origin <scope>/vX.Y.Z
+   ```
+
+   One tag per changed scope. A change to the contract and to two tools gets three tags.
+
+The agent suggests these commands and never runs them itself. Tagging and pushing stay with the
+user.

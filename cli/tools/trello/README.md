@@ -181,7 +181,7 @@ answered. A failure there never fails the command.
 ## Writes and the attach-file risk
 
 The full build adds `cards create`, `move`, `update`, `comment`, `attach-url`, `attach-file`,
-`archive` and `delete`. Every one:
+`detach`, `archive`, `delete`, `add-checklist` and `check-item`, plus `checklists add-item`. Every one:
 
 - is refused without `--confirm`, and the refusal shows the exact request as a preview (credentials
   redacted), with nothing sent;
@@ -193,7 +193,8 @@ The full build adds `cards create`, `move`, `update`, `comment`, `attach-url`, `
 
 `cards delete` is **permanent**: Trello removes the card with its comments and attachments, and
 there is no undo. `cards archive` hides the card and can be reversed in Trello; `teach` tells agents
-to prefer it. If agents should never delete, run `trello-ro`, or deny `cards delete` by name in the
+to prefer it. `cards detach` is also permanent: an attached file is deleted from Trello. If agents
+should never delete, run `trello-ro`, or deny `cards delete` and `cards detach` by name in the
 agent's permission rules.
 
 **`cards attach-file` uploads any local file the process can read** to Trello, where anyone with

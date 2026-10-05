@@ -16,6 +16,7 @@ func (a *App) orientation() teach.Domain {
 			{Question: "What columns does a board have?", Command: "lists list --board <board>"},
 			{Question: "What is on a board?", Command: "cards list --board <board>"},
 			{Question: "What does this card say?", Command: "cards get <card>"},
+			{Question: "What is attached, discussed, or checked off on a card?", Command: "cards attachments|comments|checklists <card>"},
 			{Question: "Where is the card about X?", Command: `cards search --query "<words>"`},
 			{Question: "What changed recently?", Command: "actions list --board <board> --since -24h"},
 		},
@@ -28,10 +29,11 @@ func (a *App) orientation() teach.Domain {
 		},
 	}
 	if a.Build.WritesEnabled {
-		domain.Summary += " With `--confirm` it can also create, move, comment on, archive, and delete cards, replace descriptions, and attach links or files."
+		domain.Summary += " With `--confirm` it can also create, move, comment on, archive, and delete cards, replace descriptions, attach links or files, remove attachments, and manage checklists."
 		domain.Traps = append(domain.Traps,
 			"`cards update` replaces the whole description. Read it with `cards get` first if you mean to append.",
 			"`cards delete` is permanent, with the card's comments and attachments. Use `cards archive` unless deletion was asked for.",
+			"`cards detach` permanently removes an attachment, deleting uploaded files from Trello.",
 			"Commands that change Trello are marked `mutates` in `tools --detail` and never run without `--confirm`.")
 	}
 	return domain

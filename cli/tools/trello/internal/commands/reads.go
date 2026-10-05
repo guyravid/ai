@@ -144,6 +144,59 @@ func Reads() []*registry.Command {
 			return call.Upstream.Do(ctx, &upstream.Request{Method: "GET", Path: resource("cards", in.ID)})
 		}),
 
+		registry.List[idInput, trello.Attachment](registry.Spec{
+			Name:        "cards.attachments",
+			Description: "List a card's attachments, oldest first.",
+			Collectable: true,
+			Fields:      &registry.FieldSet{Default: trello.AttachmentDefault, Available: trello.AttachmentAvailable},
+			Sort:        "date asc, id asc",
+			Limits:      &registry.Limits{Default: 25, Max: 1000},
+			Errors:      listErrors,
+			Examples: []registry.Example{
+				{Argv: []string{"cards", "attachments", "91bc4d"}, Description: "Attachments of a card"},
+				{Argv: []string{"cards", "attachments", "91bc4d", "--fields", "id,name,bytes,mimeType"}, Description: "With size and type"},
+			},
+		}, func(ctx context.Context, call *registry.Call, in idInput) (registry.ListSource, error) {
+			return &trello.LocalList{Sort: call.Sort,
+				Load: trello.ArrayLoader(call.Upstream, resource("cards", in.ID)+"/attachments", nil, "attachments")}, nil
+		}),
+
+		registry.List[idInput, trello.Action](registry.Spec{
+			Name:        "cards.comments",
+			Description: "List a card's comments, newest first.",
+			Collectable: true,
+			Fields:      &registry.FieldSet{Default: trello.CommentDefault, Available: trello.CommentAvailable},
+			Sort:        "date desc, id asc",
+			Limits:      &registry.Limits{Default: 25, Max: 1000},
+			Errors:      listErrors,
+			Examples: []registry.Example{
+				{Argv: []string{"cards", "comments", "91bc4d"}, Description: "Latest comments on a card"},
+				{Argv: []string{"cards", "comments", "91bc4d", "--fields", "id,date,memberCreator.fullName,data.text"}, Description: "With the author's full name"},
+			},
+		}, func(ctx context.Context, call *registry.Call, in idInput) (registry.ListSource, error) {
+			query := url.Values{"filter": {"commentCard"}, "limit": {strconv.Itoa(trello.MaxActionsPage)}}
+			return &trello.LocalList{Sort: call.Sort,
+				Load: trello.ArrayLoader(call.Upstream, resource("cards", in.ID)+"/actions", query, "comments")}, nil
+		}),
+
+		registry.List[idInput, trello.Checklist](registry.Spec{
+			Name:        "cards.checklists",
+			Description: "List a card's checklists with their check items, in card order.",
+			Collectable: true,
+			Fields:      &registry.FieldSet{Default: trello.ChecklistDefault, Available: trello.ChecklistAvailable},
+			Sort:        "pos asc, id asc",
+			Limits:      &registry.Limits{Default: 25, Max: 200},
+			Errors:      listErrors,
+			Examples: []registry.Example{
+				{Argv: []string{"cards", "checklists", "91bc4d"}, Description: "Checklists and items of a card"},
+				{Argv: []string{"cards", "checklists", "91bc4d", "--fields", "id,name"}, Description: "Checklist ids and names only"},
+			},
+		}, func(ctx context.Context, call *registry.Call, in idInput) (registry.ListSource, error) {
+			query := url.Values{"checkItem_fields": {"name,state,pos"}}
+			return &trello.LocalList{Sort: call.Sort,
+				Load: trello.ArrayLoader(call.Upstream, resource("cards", in.ID)+"/checklists", query, "checklists")}, nil
+		}),
+
 		registry.List[cardsSearchInput, trello.Card](registry.Spec{
 			Name:        "cards.search",
 			Description: "Search cards across boards; up to 1000 matches, most recently active first.",
