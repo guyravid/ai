@@ -174,3 +174,45 @@ func TestDetachIsDestructiveAndChecklistWritesAreNot(t *testing.T) {
 		}
 	}
 }
+
+func TestCardRename(t *testing.T) {
+	if !commands.WritesEnabled {
+		t.Skip("read-only build")
+	}
+	args := []string{"cards", "rename", "c1", "--name", "Fix paging bug"}
+	h := newHarness(t)
+	refused := h.run(args...)
+	if refused.exit != 8 || refused.errorCode() != "refused" || h.fake.total() != 0 {
+		t.Fatalf("without --confirm: exit %d, %d requests", refused.exit, h.fake.total())
+	}
+	preview := refused.doc["error"].(map[string]any)["details"].(map[string]any)["preview"].(map[string]any)
+	if preview["method"] != "PUT" || !strings.HasSuffix(preview["url"].(string), "/1/cards/c1") {
+		t.Errorf("preview = %v", preview)
+	}
+	if dry := h.run(append(args, "--dry-run", "--confirm")...); dry.exit != 0 || h.fake.total() != 0 {
+		t.Fatalf("dry run: exit %d, %d requests", dry.exit, h.fake.total())
+	}
+	sent := h.run(append(args, "--confirm")...)
+	if sent.exit != 0 || h.fake.count("PUT /1/cards/c1") != 1 || !strings.Contains(h.fake.lastBody, `"name":"Fix paging bug"`) {
+		t.Fatalf("confirmed: exit %d, body %s", sent.exit, h.fake.lastBody)
+	}
+	if sent.doc["data"].(map[string]any)["id"] != "c1" {
+		t.Errorf("data = %v", sent.doc["data"])
+	}
+	before := h.fake.total()
+	if empty := h.run("cards", "rename", "c1", "--name", "", "--confirm"); empty.exit != 2 || empty.errorCode() != "usage" {
+		t.Errorf("empty name is reported as a missing required flag: exit %d: %s", empty.exit, empty.raw)
+	}
+	for _, name := range []string{"  ", "two\nlines"} {
+		result := h.run("cards", "rename", "c1", "--name", name, "--confirm")
+		if result.exit != 6 || result.errorCode() != "validation" {
+			t.Errorf("name %q: exit %d: %s", name, result.exit, result.raw)
+		}
+	}
+	if h.fake.total() != before {
+		t.Error("requests sent for an invalid name")
+	}
+	if missing := h.run("cards", "rename", "nope", "--name", "x", "--confirm"); missing.errorCode() != "not_found" {
+		t.Errorf("missing card: %s", missing.raw)
+	}
+}

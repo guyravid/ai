@@ -180,7 +180,7 @@ answered. A failure there never fails the command.
 
 ## Writes and the attach-file risk
 
-The full build adds `cards create`, `move`, `update`, `comment`, `attach-url`, `attach-file`,
+The full build adds `cards create`, `move`, `rename`, `update`, `comment`, `attach-url`, `attach-file`,
 `detach`, `archive`, `delete`, `add-checklist` and `check-item`, plus `checklists add-item`. Every one:
 
 - is refused without `--confirm`, and the refusal shows the exact request as a preview (credentials

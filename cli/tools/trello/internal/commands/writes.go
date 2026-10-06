@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"net/url"
 	"path/filepath"
+	"strings"
 
 	"github.com/guyravid/ai/cli/tools/trello/internal/errs"
 	"github.com/guyravid/ai/cli/tools/trello/internal/registry"
@@ -37,6 +38,11 @@ type cardsMoveInput struct {
 type cardsUpdateInput struct {
 	ID   string `json:"id" jsonschema:"Card id or short link" cli:"positional"`
 	Desc string `json:"desc" jsonschema:"New description (Markdown); replaces the current one"`
+}
+
+type cardsRenameInput struct {
+	ID   string `json:"id" jsonschema:"Card id or short link" cli:"positional"`
+	Name string `json:"name" jsonschema:"New card title; one line, not empty"`
 }
 
 type cardsCommentInput struct {
@@ -130,6 +136,23 @@ func Writes() []*registry.Command {
 		}, func(ctx context.Context, call *registry.Call, in cardsUpdateInput) (*upstream.Request, error) {
 			// Sent even when empty: clearing a description is a legitimate update.
 			return &upstream.Request{Method: "PUT", Path: resource("cards", in.ID), Body: map[string]string{"desc": in.Desc}}, nil
+		}),
+
+		registry.Write[cardsRenameInput, trello.Card](registry.Spec{
+			Name:        "cards.rename",
+			Description: "Change a card's title.",
+			Idempotent:  true,
+			Errors:      writeErrors,
+			Examples: []registry.Example{{Argv: []string{"cards", "rename", "91bc4d", "--name", "Fix paging bug", "--confirm"},
+				Description: "Rename a card"}},
+		}, func(ctx context.Context, call *registry.Call, in cardsRenameInput) (*upstream.Request, error) {
+			if strings.TrimSpace(in.Name) == "" {
+				return nil, errs.New(errs.Validation, "The card name must not be empty.")
+			}
+			if strings.ContainsAny(in.Name, "\r\n") {
+				return nil, errs.New(errs.Validation, "The card name must be a single line.")
+			}
+			return &upstream.Request{Method: "PUT", Path: resource("cards", in.ID), Body: map[string]string{"name": in.Name}}, nil
 		}),
 
 		registry.Write[cardsCommentInput, trello.Action](registry.Spec{

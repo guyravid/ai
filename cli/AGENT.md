@@ -213,14 +213,20 @@ When a change touches either, the agent:
    - Tool: major if a command, flag, field default, or exit code changes in a way that breaks
      existing callers; minor if it adds commands, flags, or fields; patch for fixes and docs.
      If the tool now conforms to a new contract version, bump at least minor.
-3. Once the change is committed, reminds the user to tag and push, with the exact commands:
+3. Once the change is merged to `main`, reminds the user to tag the merged result and push, with
+   the exact commands:
 
    ```sh
+   git checkout main && git pull
    git tag -a <scope>/vX.Y.Z -m "<scope> vX.Y.Z: <one-line summary>"
    git push origin <scope>/vX.Y.Z
    ```
 
    One tag per changed scope. A change to the contract and to two tools gets three tags.
+
+   Tag on `main`, not on the branch. A squash or rebase merge leaves a branch commit off `main`,
+   and builds from `main` then report a commit hash instead of the version. Merge PRs that carry a
+   tagged commit with a merge commit, not a squash.
 
 The agent suggests these commands and never runs them itself. Tagging and pushing stay with the
 user.

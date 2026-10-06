@@ -13,6 +13,7 @@ var MutatingNames = []string{
 	"cards.delete",
 	"cards.detach",
 	"cards.move",
+	"cards.rename",
 	"cards.update",
 	"checklists.add-item",
 }

@@ -1,0 +1,13 @@
+{
+  "storage": "trello",
+  "trello": {
+    "board": "6aa4780bacc867ed68401481",
+    "lists": {
+      "to-buy": "6aa4780bacc867ed68401491",
+      "escalate": "6aa4780bacc867ed68401492",
+      "bought": "6aa4780bacc867ed68401493",
+      "upgrades": "6aa878fedcd1ce7744fc4ae0",
+      "source-library": null
+    }
+  }
+}
