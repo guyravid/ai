@@ -1,0 +1,65 @@
+{
+  "spec": {
+    "type": "general",
+    "status": "ready",
+    "category": "Bikes",
+    "use": "Winter commuting and trails",
+    "condition": "used-ok",
+    "targetPrice": {
+      "amount": 150,
+      "currency": "CAD"
+    },
+    "maxPrice": {
+      "amount": 200,
+      "currency": "CAD"
+    },
+    "location": "Ottawa, ON",
+    "pickupRadiusKm": 50,
+    "shippingOk": false,
+    "mustHave": [
+      "Mountain bike (hardtail or full suspension)",
+      "Disc brakes"
+    ],
+    "niceToHave": [
+      "Studded or winter tires",
+      "Rack mounts"
+    ],
+    "dealBreakers": [
+      "Cracked or bent frame"
+    ],
+    "fit": [
+      "Rider height 1.81 m: frame size L (19-21 inch)"
+    ],
+    "unknownLines": [],
+    "unknownSections": []
+  },
+  "brief": {
+    "keywords": [
+      "mountain bike",
+      "hardtail",
+      "29er",
+      "disc brakes"
+    ],
+    "synonyms": [
+      "MTB",
+      "trail bike"
+    ],
+    "exclude": [
+      "kids",
+      "BMX",
+      "road bike",
+      "parts",
+      "wanted"
+    ],
+    "updated": "2026-10-05",
+    "rules": [
+      "Frame size L or 19-21 inch only",
+      "Disc brakes required; reject V-brakes and rim brakes",
+      "Price at most 200 CAD; reject cheaper-than-plausible listings that ask for e-transfer first or shipping only",
+      "Pickup within 50 km of Ottawa",
+      "Size or brakes not stated: uncertain"
+    ],
+    "unknownLines": [],
+    "unknownSections": []
+  }
+}

@@ -53,6 +53,10 @@ function createDeps(
       return content;
     },
     readStdin: async () => stdin,
+    runDeals: async (options) => {
+      calls.push({ method: "runDeals", args: [options] });
+      return { itemsChecked: 0 };
+    },
     fetchUrl: async (url) => {
       calls.push({ method: "fetchUrl", args: [url] });
       return fetchResult;
@@ -224,6 +228,30 @@ describe("cli probe", () => {
     const { deps } = createDeps();
     assert.equal((await runCli(["probe"], deps)).exitCode, 2);
     assert.equal((await runCli(["probe", "a", "b"], deps)).exitCode, 2);
+  });
+});
+
+describe("cli run", () => {
+  it("passes flags to the runner without touching the store", async () => {
+    const { deps, calls } = createDeps();
+    deps.getStore = async () => {
+      throw new Error("store must not be used");
+    };
+    const result = await runCli(["run", "--dry-run", "--item", "c1", "--force-sweep"], deps);
+    assert.equal(result.exitCode, 0);
+    assert.deepEqual(calls[0], { method: "runDeals", args: [{ dryRun: true, itemId: "c1", forceSweep: true }] });
+  });
+
+  it("defaults to a real run over all items", async () => {
+    const { deps, calls } = createDeps();
+    await runCli(["run"], deps);
+    assert.deepEqual(calls[0]?.args, [{ dryRun: false, itemId: undefined, forceSweep: false }]);
+  });
+
+  it("rejects unknown flags and positionals", async () => {
+    const { deps } = createDeps();
+    assert.equal((await runCli(["run", "--bogus"], deps)).exitCode, 2);
+    assert.equal((await runCli(["run", "extra"], deps)).exitCode, 2);
   });
 });
 

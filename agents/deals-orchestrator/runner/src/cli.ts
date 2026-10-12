@@ -9,6 +9,8 @@ import { extractPage } from "./extract/extract.ts";
 import type { ExtractResult } from "./extract/types.ts";
 import { fetchPage, type FetchResult } from "./fetch/fetcher.ts";
 import { HostRateLimiter } from "./fetch/rate-limiter.ts";
+import type { RunOptions } from "./run/deps.ts";
+import { runWithRealDeps } from "./run/wiring.ts";
 import { execTrello } from "./store/exec-trello.ts";
 import type { ItemChanges, ItemStore } from "./store/item-store.ts";
 import { StoreError } from "./store/store-error.ts";
@@ -19,6 +21,7 @@ export interface CliDeps {
   readFile: (path: string) => Promise<string>;
   readStdin: () => Promise<string>;
   fetchUrl: (url: string) => Promise<FetchResult>;
+  runDeals: (options: RunOptions) => Promise<unknown>;
 }
 
 export interface CliResult {
@@ -260,6 +263,20 @@ async function probeUrl(url: string, deps: CliDeps): Promise<unknown> {
 }
 
 const STANDALONE_COMMANDS: Record<string, StandaloneDefinition> = {
+  run: {
+    options: {
+      "dry-run": { type: "boolean" },
+      item: { type: "string" },
+      "force-sweep": { type: "boolean" },
+    },
+    positionals: [],
+    run: ({ values, deps }) =>
+      deps.runDeals({
+        dryRun: values["dry-run"] === true,
+        itemId: optionalString(values, "item"),
+        forceSweep: values["force-sweep"] === true,
+      }),
+  },
   probe: {
     options: {},
     positionals: ["url"],
@@ -335,6 +352,7 @@ async function main(): Promise<void> {
     readFile: (path) => readFile(path, "utf8"),
     readStdin,
     fetchUrl: (url) => fetchPage(url, {}, { limiter }),
+    runDeals: (options) => runWithRealDeps(options),
   };
   const result = await runCli(process.argv.slice(2), deps);
   process.stdout.write(`${result.output}\n`);

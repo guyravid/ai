@@ -9,5 +9,39 @@
       "upgrades": "6aa878fedcd1ce7744fc4ae0",
       "source-library": null
     }
+  },
+  "run": {
+    "cadenceHours": {
+      "to-buy": 24,
+      "escalate": 8,
+      "upgrades": 72
+    },
+    "sweepDays": {
+      "to-buy": 7,
+      "escalate": 2,
+      "upgrades": 14
+    },
+    "dueToleranceMinutes": 30,
+    "alert": {
+      "upgradesTargetRatio": 0.85
+    },
+    "models": {
+      "evaluate-listings": "sonnet",
+      "check-url": "sonnet",
+      "sweep": "sonnet"
+    },
+    "perCallBudgetUsd": {
+      "default": 0.15,
+      "sweep": 0.4
+    },
+    "dailyCapUsd": 1.0,
+    "maxSearchesPerSweep": 5,
+    "listingsPerCall": 8,
+    "maxListingsPerItemPerRun": 24,
+    "maxNewSourcesPerSweep": 3,
+    "telegram": {
+      "enabled": true,
+      "chat": null
+    }
   }
 }

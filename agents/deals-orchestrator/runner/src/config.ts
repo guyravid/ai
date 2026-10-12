@@ -9,6 +9,7 @@ import {
   isNullish,
 } from "./json.ts";
 import { LIST_ROLES, type ListRole } from "./roles.ts";
+import { parseRunConfig, type RunConfig } from "./run/run-config.ts";
 import { StoreError } from "./store/store-error.ts";
 
 export interface TrelloConfig {
@@ -19,6 +20,7 @@ export interface TrelloConfig {
 export interface DealsConfig {
   storage: "trello";
   trello: TrelloConfig;
+  run: RunConfig;
 }
 
 const REQUIRED_ROLES: readonly ListRole[] = ["to-buy", "escalate", "upgrades", "bought"];
@@ -50,7 +52,7 @@ export function parseConfig(raw: unknown): DealsConfig {
       lists[role] = expectNonEmptyString(value, path);
     }
   }
-  return { storage: "trello", trello: { board, lists } };
+  return { storage: "trello", trello: { board, lists }, run: parseRunConfig(root["run"]) };
 }
 
 export function resolveConfigPath(env: NodeJS.ProcessEnv): string {

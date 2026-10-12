@@ -17,6 +17,24 @@ Each agent lives in its own subdirectory (`agents/<agent-name>/`) and should fol
   references/       # Optional: reference docs, examples, or lookup tables the agent reads
 ```
 
+### Agent bundles
+A main agent whose subagents exist only to serve it is a bundle. A bundle keeps every definition in
+its own `.claude/agents/`, the main agent included, so Claude Code loads them for any session
+started in the bundle's directory. That works from any clone or copy, with nothing installed
+globally and no symlinks:
+```
+<bundle-name>/
+  .claude/
+    agents/
+      <bundle-name>.md    # The main agent, run with `claude --agent <bundle-name>`
+      <subagent>.md       # One file per subagent; same frontmatter and sections as AGENT.md
+    settings.json         # Optional: permissions/hooks for sessions in the bundle
+  README.md
+  references/
+```
+A subagent that another agent or bundle also uses is not part of a bundle; give it its own
+`agents/<agent-name>/` directory instead.
+
 ### Agent Definition File (`AGENT.md`)
 The definition file is the system prompt. It must include:
 

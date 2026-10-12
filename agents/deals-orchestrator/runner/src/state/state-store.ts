@@ -25,6 +25,7 @@ export interface SourceState {
   lastCheckedAt?: string | undefined;
   lastChangedAt?: string | undefined;
   blockedSince?: string | undefined;
+  needsLlmSince?: string | undefined;
   seenListingIds: string[];
   consecutiveFailures: number;
 }
@@ -35,6 +36,7 @@ export interface ItemState {
   alertedIds: string[];
   lastSweepAt?: string | undefined;
   lastRunAt?: string | undefined;
+  bestPrice?: number | undefined;
 }
 
 export interface StateStore {
@@ -83,6 +85,7 @@ function parseSourceState(raw: unknown, path: string): SourceState {
     lastCheckedAt: optionalString(object, "lastCheckedAt", path),
     lastChangedAt: optionalString(object, "lastChangedAt", path),
     blockedSince: optionalString(object, "blockedSince", path),
+    needsLlmSince: optionalString(object, "needsLlmSince", path),
     seenListingIds: capSeenListingIds(expectStringArray(object["seenListingIds"], `${path}.seenListingIds`)),
     consecutiveFailures: expectNumber(object["consecutiveFailures"], `${path}.consecutiveFailures`),
   };
@@ -103,6 +106,7 @@ export function parseItemState(raw: unknown): ItemState {
     alertedIds: expectStringArray(object["alertedIds"], "state.alertedIds"),
     lastSweepAt: optionalString(object, "lastSweepAt", "state"),
     lastRunAt: optionalString(object, "lastRunAt", "state"),
+    bestPrice: isNullish(object["bestPrice"]) ? undefined : expectNumber(object["bestPrice"], "state.bestPrice"),
   };
 }
 

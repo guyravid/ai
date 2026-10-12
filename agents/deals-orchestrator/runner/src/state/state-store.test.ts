@@ -35,6 +35,7 @@ function sampleState(): ItemState {
         lastCheckedAt: "2026-10-05T10:00:00.000Z",
         lastChangedAt: "2026-10-04T10:00:00.000Z",
         blockedSince: "2026-10-03T10:00:00.000Z",
+        needsLlmSince: "2026-10-02T10:00:00.000Z",
         seenListingIds: ["l1", "l2"],
         consecutiveFailures: 2,
       },
@@ -42,6 +43,7 @@ function sampleState(): ItemState {
     alertedIds: ["l1"],
     lastSweepAt: "2026-10-01T00:00:00.000Z",
     lastRunAt: "2026-10-05T10:00:00.000Z",
+    bestPrice: 120,
   };
 }
 
