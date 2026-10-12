@@ -5,7 +5,9 @@ package commands
 import (
 	"context"
 	"encoding/json"
+	"net/url"
 	"path/filepath"
+	"strings"
 
 	"github.com/guyravid/ai/cli/tools/trello/internal/errs"
 	"github.com/guyravid/ai/cli/tools/trello/internal/registry"
@@ -38,6 +40,11 @@ type cardsUpdateInput struct {
 	Desc string `json:"desc" jsonschema:"New description (Markdown); replaces the current one"`
 }
 
+type cardsRenameInput struct {
+	ID   string `json:"id" jsonschema:"Card id or short link" cli:"positional"`
+	Name string `json:"name" jsonschema:"New card title; one line, not empty"`
+}
+
 type cardsCommentInput struct {
 	ID   string `json:"id" jsonschema:"Card id or short link" cli:"positional"`
 	Text string `json:"text" jsonschema:"Comment text (Markdown)"`
@@ -57,6 +64,28 @@ type attachFileInput struct {
 	ID   string `json:"id" jsonschema:"Card id or short link" cli:"positional"`
 	File string `json:"file" jsonschema:"Local file to upload"`
 	Name string `json:"name,omitempty" jsonschema:"Attachment name; defaults to the file name"`
+}
+
+type detachInput struct {
+	ID         string `json:"id" jsonschema:"Card id or short link" cli:"positional"`
+	Attachment string `json:"attachment" jsonschema:"Attachment id, from cards attachments"`
+}
+
+type addChecklistInput struct {
+	ID   string `json:"id" jsonschema:"Card id or short link" cli:"positional"`
+	Name string `json:"name" jsonschema:"Checklist name"`
+}
+
+type addItemInput struct {
+	ID      string `json:"id" jsonschema:"Checklist id, from cards checklists" cli:"positional"`
+	Name    string `json:"name" jsonschema:"Check item text"`
+	Checked bool   `json:"checked,omitempty" jsonschema:"Create the item already complete"`
+}
+
+type checkItemInput struct {
+	ID        string `json:"id" jsonschema:"Card id or short link" cli:"positional"`
+	CheckItem string `json:"check_item" jsonschema:"Check item id, from cards checklists"`
+	State     string `json:"state" jsonschema:"complete or incomplete"`
 }
 
 // body builds a request body from key/value pairs, leaving out empty values.
@@ -107,6 +136,23 @@ func Writes() []*registry.Command {
 		}, func(ctx context.Context, call *registry.Call, in cardsUpdateInput) (*upstream.Request, error) {
 			// Sent even when empty: clearing a description is a legitimate update.
 			return &upstream.Request{Method: "PUT", Path: resource("cards", in.ID), Body: map[string]string{"desc": in.Desc}}, nil
+		}),
+
+		registry.Write[cardsRenameInput, trello.Card](registry.Spec{
+			Name:        "cards.rename",
+			Description: "Change a card's title.",
+			Idempotent:  true,
+			Errors:      writeErrors,
+			Examples: []registry.Example{{Argv: []string{"cards", "rename", "91bc4d", "--name", "Fix paging bug", "--confirm"},
+				Description: "Rename a card"}},
+		}, func(ctx context.Context, call *registry.Call, in cardsRenameInput) (*upstream.Request, error) {
+			if strings.TrimSpace(in.Name) == "" {
+				return nil, errs.New(errs.Validation, "The card name must not be empty.")
+			}
+			if strings.ContainsAny(in.Name, "\r\n") {
+				return nil, errs.New(errs.Validation, "The card name must be a single line.")
+			}
+			return &upstream.Request{Method: "PUT", Path: resource("cards", in.ID), Body: map[string]string{"name": in.Name}}, nil
 		}),
 
 		registry.Write[cardsCommentInput, trello.Action](registry.Spec{
@@ -169,6 +215,57 @@ func Writes() []*registry.Command {
 				Description: "Delete a card for good"}},
 		}, func(ctx context.Context, call *registry.Call, in cardIDInput) (*upstream.Request, error) {
 			return &upstream.Request{Method: "DELETE", Path: resource("cards", in.ID)}, nil
+		}),
+
+		registry.Write[addChecklistInput, trello.Checklist](registry.Spec{
+			Name:        "cards.add-checklist",
+			Description: "Create an empty checklist on a card.",
+			Errors:      writeErrors,
+			Examples: []registry.Example{{Argv: []string{"cards", "add-checklist", "91bc4d", "--name", "Release steps", "--confirm"},
+				Description: "Add a checklist"}},
+		}, func(ctx context.Context, call *registry.Call, in addChecklistInput) (*upstream.Request, error) {
+			return &upstream.Request{Method: "POST", Path: resource("cards", in.ID) + "/checklists", Body: body("name", in.Name)}, nil
+		}),
+
+		registry.Write[addItemInput, trello.CheckItem](registry.Spec{
+			Name:        "checklists.add-item",
+			Description: "Add an item to a checklist.",
+			Errors:      writeErrors,
+			Examples: []registry.Example{{Argv: []string{"checklists", "add-item", "62d0a1", "--name", "Tag the release", "--confirm"},
+				Description: "Add an item"}},
+		}, func(ctx context.Context, call *registry.Call, in addItemInput) (*upstream.Request, error) {
+			checked := ""
+			if in.Checked {
+				checked = "true"
+			}
+			return &upstream.Request{Method: "POST", Path: resource("checklists", in.ID) + "/checkItems",
+				Body: body("name", in.Name, "checked", checked)}, nil
+		}),
+
+		registry.Write[checkItemInput, trello.CheckItem](registry.Spec{
+			Name:        "cards.check-item",
+			Description: "Mark a check item complete or incomplete.",
+			Idempotent:  true,
+			Enums:       map[string][]string{"state": {"complete", "incomplete"}},
+			Errors:      writeErrors,
+			Examples: []registry.Example{{Argv: []string{"cards", "check-item", "91bc4d", "--check-item", "63e1b2", "--state", "complete", "--confirm"},
+				Description: "Tick an item"}},
+		}, func(ctx context.Context, call *registry.Call, in checkItemInput) (*upstream.Request, error) {
+			return &upstream.Request{Method: "PUT", Path: resource("cards", in.ID) + "/checkItem/" + url.PathEscape(in.CheckItem),
+				Body: body("state", in.State)}, nil
+		}),
+
+		// Trello answers an attachment delete with {"_value":null}, so data is raw JSON.
+		registry.Write[detachInput, json.RawMessage](registry.Spec{
+			Name:        "cards.detach",
+			Description: "Remove an attachment from a card. Uploaded files are deleted from Trello. Cannot be undone.",
+			Destructive: true,
+			Idempotent:  true,
+			Errors:      writeErrors,
+			Examples: []registry.Example{{Argv: []string{"cards", "detach", "91bc4d", "--attachment", "64f2c3", "--confirm"},
+				Description: "Remove an attachment"}},
+		}, func(ctx context.Context, call *registry.Call, in detachInput) (*upstream.Request, error) {
+			return &upstream.Request{Method: "DELETE", Path: resource("cards", in.ID) + "/attachments/" + url.PathEscape(in.Attachment)}, nil
 		}),
 	}
 }

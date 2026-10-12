@@ -28,14 +28,23 @@ var fixedNow = time.Date(2026, 9, 30, 12, 0, 0, 0, time.UTC)
 
 // fakeTrello is a request-counting stand-in for api.trello.com.
 type fakeTrello struct {
-	mu       sync.Mutex
-	requests map[string]int
-	cards    int
-	actions  int
-	pageCap  int
-	plant    string // a credential echoed into every card description
-	lastBody string
-	lastAuth string
+	mu        sync.Mutex
+	requests  map[string]int
+	cards     int
+	actions   int
+	pageCap   int
+	plant     string // a credential echoed into every card description
+	lastBody  string
+	lastAuth  string
+	lastQuery string
+}
+
+func (f *fakeTrello) recordBody(r *http.Request) {
+	body := new(bytes.Buffer)
+	_, _ = body.ReadFrom(r.Body)
+	f.mu.Lock()
+	f.lastBody = body.String()
+	f.mu.Unlock()
 }
 
 func (f *fakeTrello) count(key string) int {
@@ -105,6 +114,32 @@ func (f *fakeTrello) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		fmt.Fprint(w, `{"id":"c1","name":"Card","closed":true}`)
 	case r.Method == "DELETE" && r.URL.Path == "/1/cards/c1":
 		fmt.Fprint(w, `{"limits":{}}`)
+	case r.Method == "GET" && r.URL.Path == "/1/cards/c1/attachments":
+		fmt.Fprint(w, `[{"id":"at2","name":"spec.pdf","url":"https://trello.com/1/cards/c1/attachments/at2/download/spec.pdf","date":"2026-09-02T10:00:00.000Z","isUpload":true,"bytes":2048,"mimeType":"application/pdf"},`+
+			`{"id":"at1","name":"Design","url":"https://example.com/design","date":"2026-09-01T10:00:00.000Z","isUpload":false,"bytes":null,"mimeType":""}]`)
+	case r.Method == "GET" && r.URL.Path == "/1/cards/c1/actions":
+		f.mu.Lock()
+		f.lastQuery = r.URL.RawQuery
+		f.mu.Unlock()
+		fmt.Fprint(w, `[{"id":"k1","type":"commentCard","date":"2026-09-01T10:00:00.000Z","idMemberCreator":"m1","data":{"text":"first"},"memberCreator":{"id":"m1","username":"tester","fullName":"Test User"}},`+
+			`{"id":"k2","type":"commentCard","date":"2026-09-02T10:00:00.000Z","idMemberCreator":"m1","data":{"text":"second"},"memberCreator":{"id":"m1","username":"tester","fullName":"Test User"}}]`)
+	case r.Method == "GET" && r.URL.Path == "/1/cards/c1/checklists":
+		f.mu.Lock()
+		f.lastQuery = r.URL.RawQuery
+		f.mu.Unlock()
+		fmt.Fprint(w, `[{"id":"ck2","name":"Later","idCard":"c1","pos":32768,"checkItems":[]},`+
+			`{"id":"ck1","name":"Release","idCard":"c1","pos":16384,"checkItems":[{"id":"i1","name":"Tag","state":"complete","pos":16384},{"id":"i2","name":"Ship","state":"incomplete","pos":32768}]}]`)
+	case r.Method == "POST" && r.URL.Path == "/1/cards/c1/checklists":
+		f.recordBody(r)
+		fmt.Fprint(w, `{"id":"ck3","name":"Release steps","idCard":"c1","pos":49152,"checkItems":[]}`)
+	case r.Method == "POST" && r.URL.Path == "/1/checklists/ck1/checkItems":
+		f.recordBody(r)
+		fmt.Fprint(w, `{"id":"i3","name":"Tag the release","state":"incomplete","pos":49152,"idChecklist":"ck1"}`)
+	case r.Method == "PUT" && r.URL.Path == "/1/cards/c1/checkItem/i1":
+		f.recordBody(r)
+		fmt.Fprint(w, `{"id":"i1","name":"Tag","state":"complete","pos":16384,"idChecklist":"ck1"}`)
+	case r.Method == "DELETE" && r.URL.Path == "/1/cards/c1/attachments/at1":
+		fmt.Fprint(w, `{"_value":null}`)
 	default:
 		w.WriteHeader(404)
 	}

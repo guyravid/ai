@@ -1,0 +1,122 @@
+{
+  "9000001": {
+    "label": "match",
+    "reason": "L frame, disc, mountain, under max"
+  },
+  "9000002": {
+    "label": "match",
+    "reason": "21in frame, disc, under max"
+  },
+  "9000003": {
+    "label": "match",
+    "reason": "Large, disc"
+  },
+  "9000004": {
+    "label": "match",
+    "reason": "L, disc, within radius"
+  },
+  "9000005": {
+    "label": "match",
+    "reason": "Large, disc, 199 <= 200"
+  },
+  "9000006": {
+    "label": "match",
+    "reason": "21in, disc"
+  },
+  "9000007": {
+    "label": "match",
+    "reason": "Large, disc"
+  },
+  "9000008": {
+    "label": "match",
+    "reason": "L, disc"
+  },
+  "9000009": {
+    "label": "reject",
+    "reason": "frame size: kids bike"
+  },
+  "9000010": {
+    "label": "reject",
+    "reason": "frame size XS"
+  },
+  "9000011": {
+    "label": "reject",
+    "reason": "frame size small"
+  },
+  "9000012": {
+    "label": "reject",
+    "reason": "rim brakes"
+  },
+  "9000013": {
+    "label": "reject",
+    "reason": "rim brakes"
+  },
+  "9000014": {
+    "label": "reject",
+    "reason": "road bike, not mountain"
+  },
+  "9000015": {
+    "label": "reject",
+    "reason": "hybrid, not mountain bike"
+  },
+  "9000016": {
+    "label": "reject",
+    "reason": "BMX"
+  },
+  "9000017": {
+    "label": "reject",
+    "reason": "price over max"
+  },
+  "9000018": {
+    "label": "reject",
+    "reason": "price 260 > max 200"
+  },
+  "9000019": {
+    "label": "reject",
+    "reason": "parts/accessory"
+  },
+  "9000020": {
+    "label": "reject",
+    "reason": "clothing/accessory"
+  },
+  "9000021": {
+    "label": "reject",
+    "reason": "scam signals"
+  },
+  "9000022": {
+    "label": "reject",
+    "reason": "wanted ad"
+  },
+  "9000023": {
+    "label": "reject",
+    "reason": "scam signals, too cheap"
+  },
+  "9000024": {
+    "label": "reject",
+    "reason": "outside 50 km pickup radius"
+  },
+  "9000025": {
+    "label": "reject",
+    "reason": "deal breaker: cracked frame"
+  },
+  "9000026": {
+    "label": "uncertain",
+    "reason": "frame size unknown"
+  },
+  "9000027": {
+    "label": "uncertain",
+    "reason": "brakes and size unknown"
+  },
+  "9000028": {
+    "label": "uncertain",
+    "reason": "frame size unknown"
+  },
+  "9000029": {
+    "label": "uncertain",
+    "reason": "M/L ambiguous for 1.81 m"
+  },
+  "9000030": {
+    "label": "uncertain",
+    "reason": "brakes and size unknown"
+  }
+}

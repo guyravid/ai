@@ -17,6 +17,15 @@ writes: true
   and nothing is sent.
 - Trello rejects files above its plan's size limit with a validation error.
 
+## Listing and removing
+
+`{{tool}} cards attachments <card>` lists a card's attachments, oldest first. `isUpload` is true
+for uploaded files and false for links.
+
+`{{tool}} cards detach <card> --attachment <attachment-id> --confirm` removes one. It is
+permanent: an uploaded file is deleted from Trello, not just hidden. Take the id from
+`cards attachments` and confirm it is the one meant before running with `--confirm`.
+
 ## Risk
 
 `attach-file` can upload any file this process can read. Only confirm uploads of files you were

@@ -80,6 +80,23 @@ type Attachment struct {
 	Bytes    *int64 `json:"bytes,omitempty"`
 	Date     string `json:"date,omitempty"`
 	MimeType string `json:"mimeType,omitempty"`
+	IsUpload bool   `json:"isUpload,omitempty"`
+}
+
+type CheckItem struct {
+	ID          string      `json:"id"`
+	Name        string      `json:"name,omitempty"`
+	State       string      `json:"state,omitempty"`
+	Pos         json.Number `json:"pos,omitempty"`
+	IDChecklist string      `json:"idChecklist,omitempty"`
+}
+
+type Checklist struct {
+	ID         string      `json:"id"`
+	Name       string      `json:"name,omitempty"`
+	IDCard     string      `json:"idCard,omitempty"`
+	Pos        json.Number `json:"pos,omitempty"`
+	CheckItems []CheckItem `json:"checkItems,omitempty"`
 }
 
 // Field sets for describe and --fields. Defaults are the handful an agent needs to decide what to
@@ -99,6 +116,12 @@ var (
 	ActionDefault   = []string{"id", "type", "date", "idMemberCreator"}
 	ActionAvailable = []string{"id", "type", "date", "idMemberCreator", "data.*", "memberCreator.*"}
 
-	AttachmentDefault   = []string{"id", "name", "url", "bytes", "date", "mimeType"}
-	AttachmentAvailable = []string{"id", "name", "url", "bytes", "date", "mimeType"}
+	AttachmentDefault   = []string{"id", "name", "url", "date", "isUpload"}
+	AttachmentAvailable = []string{"id", "name", "url", "date", "isUpload", "bytes", "mimeType"}
+
+	CommentDefault   = []string{"id", "date", "memberCreator.username", "data.text"}
+	CommentAvailable = []string{"id", "date", "idMemberCreator", "memberCreator.*", "data.*"}
+
+	ChecklistDefault   = []string{"id", "name", "checkItems"}
+	ChecklistAvailable = []string{"id", "name", "pos", "idCard", "checkItems"}
 )
