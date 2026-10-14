@@ -17,7 +17,7 @@ func TestSuccessShape(t *testing.T) {
 	envelope := New("telegram", "0.1.0", command("boards.list"))
 	envelope.Data = shape.NewArray()
 	got := string(Encode(envelope, false))
-	want := `{"ok":true,"tool":"telegram","command":"boards.list","data":[],"meta":{"contract_version":"1.4.2","tool_version":"0.1.0"}}` + "\n"
+	want := `{"ok":true,"tool":"telegram","command":"boards.list","data":[],"meta":{"contract_version":"1.4.3","tool_version":"0.1.0"}}` + "\n"
 	if got != want {
 		t.Fatalf("got %s want %s", got, want)
 	}

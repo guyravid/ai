@@ -251,7 +251,7 @@ func TestEnvelopeSchemaAcceptsPatchVersion(t *testing.T) {
 			t.Errorf("pattern %q accepts %s", pattern, version)
 		}
 	}
-	if got := described.doc["data"].(map[string]any)["contract_version"]; got != "1.4.2" {
+	if got := described.doc["data"].(map[string]any)["contract_version"]; got != "1.4.3" {
 		t.Errorf("describe reports contract_version %v", got)
 	}
 }

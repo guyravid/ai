@@ -1,7 +1,7 @@
 # telegram: operator guide
 
 `telegram` is a command-line tool for the Telegram Bot API, built for AI agents. It follows the Agent
-CLI Contract 1.4.2 (`contract/CONTRACT.md` at the repository root). Every call prints exactly one JSON
+CLI Contract 1.4.3 (`contract/CONTRACT.md` at the repository root). Every call prints exactly one JSON
 document. The bot token stays in the tool's own environment, and the agent never handles it.
 
 What it does: reads a bot's incoming messages (`updates list`), sends text, documents and photos

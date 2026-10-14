@@ -12,7 +12,7 @@ import (
 	"github.com/guyravid/ai/cli/tools/telegram/internal/shape"
 )
 
-const ContractVersion = "1.4.2"
+const ContractVersion = "1.4.3"
 
 const (
 	maxMessageChars = 512

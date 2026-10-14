@@ -872,7 +872,7 @@ func TestListProfilesShowsDescriptions(t *testing.T) {
 		`{"name":"default","active":true,"declared_in":[],"description":"PR-assistant bot."},` +
 		`{"name":"builds","active":false,"declared_in":["config_file"],"description":"CI bot."},` +
 		`{"name":"scratch","active":false,"declared_in":["environment"],"description":null}],`
-	if listed.exit != 0 || !strings.Contains(listed.raw, want) || !strings.Contains(listed.raw, `"contract_version":"1.4.2"`) {
+	if listed.exit != 0 || !strings.Contains(listed.raw, want) || !strings.Contains(listed.raw, `"contract_version":"1.4.3"`) {
 		t.Errorf("exit %d\ngot  %s\nwant %s", listed.exit, listed.raw, want)
 	}
 	if strings.Contains(listed.raw, "111111111") || strings.Contains(listed.raw, testToken) || h.fake.total() != 0 {
@@ -949,7 +949,7 @@ func TestVersionReportsContract141(t *testing.T) {
 	h := newHarness(t)
 	result := h.run("version")
 	data := result.object()
-	if data["contract_version"] != "1.4.2" || data["tool"] != "telegram" || result.meta()["contract_version"] != "1.4.2" {
+	if data["contract_version"] != "1.4.3" || data["tool"] != "telegram" || result.meta()["contract_version"] != "1.4.3" {
 		t.Errorf("version %s", result.raw)
 	}
 }
