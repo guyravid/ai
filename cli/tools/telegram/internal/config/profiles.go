@@ -42,14 +42,18 @@ func ListProfiles(in Input, environ []string) (*ProfileList, *errs.Error) {
 	if err != nil {
 		return nil, err
 	}
-	defs := Defs()
+	defs := in.defs()
+	layout, err := in.Layout()
+	if err != nil {
+		return nil, err
+	}
 	configSetting, required, err := resolveConfigPath(in, selected)
 	if err != nil {
 		return nil, err
 	}
 	var file *File
 	if path, ok := configSetting.Value.(string); ok {
-		if file, err = LoadFile(path, required, defs, in.Credentials); err != nil {
+		if file, err = LoadFileWithLayout(path, required, layout); err != nil {
 			return nil, err
 		}
 	}

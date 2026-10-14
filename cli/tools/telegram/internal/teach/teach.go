@@ -386,7 +386,7 @@ func configSettings(in Input) string {
 			flag = "`" + def.Flag + "`"
 		}
 		if def.InFile {
-			member = "`" + def.FileKey() + "`"
+			member = "`" + def.FileMember() + "`"
 		}
 		fmt.Fprintf(&builder, "| `%s` | %s | %s | `%s_%s` | %s | %s |\n", def.Name, def.Kind, defaultText, in.Data.Prefix, def.Name, flag, member)
 	}

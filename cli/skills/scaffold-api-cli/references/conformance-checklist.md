@@ -6,7 +6,7 @@ The contract is authoritative; if this list and the contract disagree, fix this 
 reused or renumbered, so tests and notes that cite one stay valid; a new check takes the next free
 number in its section.
 
-Last updated for contract 1.4.2: every MUST and MUST NOT has a check, and a SHOULD with a
+Last updated for contract 1.4.3: every MUST and MUST NOT has a check, and a SHOULD with a
 measurable budget has one reported as a warning.
 
 `../scripts/verify_conformance.sh` runs the items marked **auto** against a built binary, with
@@ -140,6 +140,10 @@ tool's own test suite.
   `builtin`, and its `hint` names the skipped default-scope variable.
 - **C7-16** auto, conditional — Same condition. In that situation `doctor` fails the `credentials`
   check and reports `auth` as `skip`.
+- **C7-17** auto, conditional — Applies only when `list-config --schema` declares a nested setting
+  (a block in the `default` schema); otherwise skipped. Every block in the schema has
+  `additionalProperties:false`, and every nested member's path, joined with `_` and uppercased, is a
+  `list-config` setting name, or a credential name plus `_FILE` for a `<name>_file` member.
 
 ## §8 Context discipline
 
@@ -277,6 +281,28 @@ tool's own test suite.
 - **C13-19** auto, conditional — Applies only to a tool that supports profile descriptions. A
   `description` of 201 characters, one containing a line break, a non-string one, and a blank one are
   each `config`, exit 3.
+- **C13-20** auto — A block under a name the tool does not declare (`{"default":{"no_such_block_xyz":
+  {"limit":7}}}`) is `config`, exit 3. Every tool passes this, whether or not it supports nested
+  blocks.
+
+Checks C13-21 to C13-26 apply only when `list-config --schema` declares a nested setting (contract
+§13.4 rule 7); otherwise they are skipped. The verifier picks the first nested setting with a
+non-null `default` in `list-config` and writes that default at its path.
+
+- **C13-21** auto, conditional — The setting, given at its path in `default`, is reported under its
+  flat name with `origin:"file_default"` and a `source` ending in `#default.<dotted path>`.
+- **C13-22** auto, conditional — `$P_<FLAT NAME>` overrides it (`origin:"env_default"`, `source` that
+  variable): variables stay flat.
+- **C13-23** auto, conditional — Profiles merge per setting. With a sibling in the same block, a
+  profile that sets only the first member leaves the sibling at `file_default`; without one, an empty
+  block in the profile leaves the setting at `file_default`.
+- **C13-24** auto, conditional — An unknown member inside the block is `config`, exit 3, and the error
+  names the member's full path.
+- **C13-25** auto, conditional — One spelling: the flat member name in `default` is `config`, exit 3;
+  so is the block given as a number instead of an object.
+- **C13-26** auto, conditional — Applies only when the schema also declares a nested `<name>_file`
+  member. A value at the credential's own path (the member without `_file`) is `config`, exit 3, and
+  the value is not echoed.
 
 ## §14 Determinism
 

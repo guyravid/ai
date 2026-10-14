@@ -207,6 +207,10 @@ before building a variable name from it, and reject `FILE`.
 The resolved structure is what `list-config` prints, what `teach config` is generated from, and what
 `doctor`'s `config` check validates. One structure, three readers.
 
+With nested blocks (contract §13.4 rule 7), `s` in the two file tiers is the setting's member path,
+and the `source` pointer names it there: `config.json#profiles.<p>.telemetry.otlp.endpoint`. Every
+other tier uses the flat name.
+
 ### §5.3 The config file
 
 - Load the default path if the file exists; if `--config` or `<TOOL>_CONFIG` names a file, it must
@@ -216,6 +220,28 @@ The resolved structure is what `list-config` prints, what `teach config` is gene
   for credentials. Do this while loading, so the tool refuses to start rather than failing later in
   a way that looks like a network problem.
 - Never write the file, and never create it. Without any write path, nothing can leak into it.
+
+**Nested blocks (optional, since contract 1.4.3).** A tool may let settings be written inside blocks,
+such as `telemetry.otlp.endpoint` for `TELEMETRY_OTLP_ENDPOINT` (contract §13.4 rule 7). To support it:
+
+- Declare the path on the setting, next to its name, and check the declarations once, at build or
+  start-up: each path joined with `_` and uppercased equals the name; no two paths flatten to one
+  name (flat members, `<name>_file` and `env_file` included); no member is both a block and a value;
+  a nested setting's flag, if any, is its flat name in kebab case. These are defects in the tool,
+  not in a config file.
+- Flatten each section while loading: walk the members against the declared shape, recurse into
+  blocks, and store every leaf under its flat name. Reject an unknown member at any level, a block
+  that is not an object, and a credential value at a credential's path, naming the full path. The
+  resolver, the credential lookup and the profile merge then see only flat names, so profiles merge
+  per setting with no extra code.
+- One spelling per setting: do not also accept the flat member of a nested setting, or the reverse.
+  When an unknown member's path joins to a known name, say in the hint how the tool spells it.
+- Keep `env_file` a member of the section, not of a block.
+- Build the pointer from the declared path, and nest the `list-config --schema` properties with
+  `additionalProperties:false` on each block. In `teach config`, show each setting's member path
+  and nest the example file. Report `1.4.3`.
+
+A tool that skips this declares no paths and keeps rejecting blocks as unrecognised members.
 
 ## §6 Secrets
 

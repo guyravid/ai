@@ -124,6 +124,11 @@ default.
   lower-tier values.
 - `list-config` names the exact variable, flag, or file key behind every value. Use it before
   reasoning about the precedence chain by hand.
+- Some tools accept nested blocks in the file (contract 1.4.3), such as
+  `"telemetry": {"otlp": {"endpoint": …}}`. The path is only file syntax: the setting is still
+  `TELEMETRY_OTLP_ENDPOINT` everywhere else (`<TOOL>_TELEMETRY_OTLP_ENDPOINT`, `list-config`). Each
+  setting has one spelling, and `list-config --schema` shows it; a tool that declares no blocks
+  rejects them.
 
 **Datasets.** Size `DATASET_TOTAL_BYTES` to a few times the largest result set agents are expected
 to collect, and `DATASET_TTL` to at least the longest task that reads one. Datasets hold upstream

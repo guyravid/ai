@@ -48,11 +48,24 @@ type Def struct {
 	MinDuration time.Duration // for KindDuration; 0 means no minimum
 	Enum        []string      // for KindEnum
 	InFile      bool          // may be set in the config file
+	// FilePath, when set, places the setting inside nested blocks of the config file (contract §13.4
+	// rule 7), such as {"telemetry", "otlp", "endpoint"} for TELEMETRY_OTLP_ENDPOINT. The path joined
+	// with "_" and uppercased must equal Name. nil keeps the flat member FileKey().
+	FilePath    []string
 	Description string
 }
 
-// FileKey is the member name used in the config file.
+// FileKey is the flat member name, which also keys every config file section once it is loaded.
 func (d *Def) FileKey() string { return strings.ToLower(d.Name) }
+
+// FileMember is how the setting is spelled in the config file: its dotted path when nested, otherwise
+// FileKey().
+func (d *Def) FileMember() string {
+	if d.FilePath != nil {
+		return strings.Join(d.FilePath, ".")
+	}
+	return d.FileKey()
+}
 
 var logLevels = []string{"off", "error", "warn", "info", "debug"}
 

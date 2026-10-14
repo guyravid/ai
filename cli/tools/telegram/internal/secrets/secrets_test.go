@@ -153,3 +153,43 @@ func TestRedactorForms(t *testing.T) {
 		t.Error("a credential under 8 characters must not be registered")
 	}
 }
+
+// A credential nested in the config file (contract §13.4 rule 7) resolves from its <name>_file member
+// at its path, profile scope first, and reports that path as its source.
+func TestNestedCredentialFileResolves(t *testing.T) {
+	defaultToken := secretFile(t, "default-nested-token\n", 0o600)
+	workToken := secretFile(t, "work-nested-token\n", 0o600)
+	configPath := filepath.Join(t.TempDir(), "config.json")
+	content := fmt.Sprintf(`{"default":{"telemetry":{"otlp":{"token_file":%q}}},"profiles":{"work":{"telemetry":{"otlp":{"token_file":%q}}}}}`,
+		defaultToken, workToken)
+	if err := os.WriteFile(configPath, []byte(content), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	layout, layoutErr := config.Input{Credentials: []string{"TELEMETRY_OTLP_TOKEN"},
+		CredentialPaths: map[string][]string{"TELEMETRY_OTLP_TOKEN": {"telemetry", "otlp", "token"}}}.Layout()
+	if layoutErr != nil {
+		t.Fatal(layoutErr)
+	}
+	file, loadErr := config.LoadFileWithLayout(configPath, true, layout)
+	if loadErr != nil {
+		t.Fatal(loadErr)
+	}
+	cases := []struct {
+		profile, value, source string
+		origin                 config.Origin
+	}{
+		{"", "default-nested-token", "config.json#default.telemetry.otlp.token_file", config.OriginFileDefault},
+		{"work", "work-nested-token", "config.json#profiles.work.telemetry.otlp.token_file", config.OriginFileProfile},
+	}
+	for _, tc := range cases {
+		credentials, _, err := Resolve(Input{Prefix: "TELEGRAM", Profile: tc.profile, Env: envOf(map[string]string{"HOME": t.TempDir()}),
+			GOOS: "linux", File: file, Names: []string{"TELEMETRY_OTLP_TOKEN"}})
+		if err != nil {
+			t.Fatal(err)
+		}
+		got := credentials[0]
+		if got.Secret.Reveal() != tc.value || got.Source != tc.source || got.Origin != tc.origin {
+			t.Errorf("profile %q: got %q from %s (%s)", tc.profile, got.Secret.Reveal(), got.Source, got.Origin)
+		}
+	}
+}
