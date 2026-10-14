@@ -404,6 +404,13 @@ func configSchema() map[string]any {
 	properties[config.DescriptionKey] = map[string]any{"type": "string", "minLength": 1, "maxLength": config.MaxDescriptionLength,
 		"pattern":     `^[^\r\n]*$`,
 		"description": "One line saying what this profile is for. Shown by list-profiles; not a setting."}
+	// Nested settings (contract §13.4 rule 7) appear inside their blocks. Load has already built the
+	// same layout, so it cannot fail here at run time.
+	layout, layoutErr := config.Input{Credentials: Credentials}.Layout()
+	if layoutErr != nil {
+		panic(layoutErr)
+	}
+	properties = layout.NestSchema(properties)
 	return map[string]any{
 		"$schema":              "https://json-schema.org/draft/2020-12/schema",
 		"type":                 "object",

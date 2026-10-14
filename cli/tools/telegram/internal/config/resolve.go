@@ -17,6 +17,28 @@ type Input struct {
 	Env         Env
 	GOOS        string
 	Credentials []string // declared credential names, such as API_KEY
+	// CredentialPaths optionally nests a credential in the config file (contract §13.4 rule 7): the
+	// path of its value member, such as {"telemetry", "otlp", "token"} for TELEMETRY_OTLP_TOKEN. It is
+	// referenced there only as the same path with "_file" on the last segment.
+	CredentialPaths map[string][]string
+	// Defs are the settings; nil means Defs().
+	Defs []*Def
+}
+
+func (in Input) defs() []*Def {
+	if in.Defs != nil {
+		return in.Defs
+	}
+	return Defs()
+}
+
+// Layout returns the config file layout of the declared settings and credentials.
+func (in Input) Layout() (*Layout, *errs.Error) {
+	layout, err := NewLayout(in.defs(), in.Credentials, in.CredentialPaths)
+	if err != nil {
+		return nil, layoutError(err)
+	}
+	return layout, nil
 }
 
 type Setting struct {
@@ -68,7 +90,11 @@ func (r *Resolved) Size(name string) int64 {
 
 // Load resolves every setting through the seven tiers of contract §13.2, per setting.
 func Load(in Input) (*Resolved, *errs.Error) {
-	defs := Defs()
+	defs := in.defs()
+	layout, layoutErr := in.Layout()
+	if layoutErr != nil {
+		return nil, layoutErr
+	}
 	resolved := &Resolved{Prefix: in.Prefix, byName: map[string]*Setting{}}
 
 	profile, profileSetting, err := resolveProfile(in)
@@ -83,7 +109,7 @@ func Load(in Input) (*Resolved, *errs.Error) {
 	}
 	if path, ok := configSetting.Value.(string); ok {
 		resolved.ConfigPath = path
-		file, loadErr := LoadFile(path, required, defs, in.Credentials)
+		file, loadErr := LoadFileWithLayout(path, required, layout)
 		if loadErr != nil {
 			return nil, loadErr
 		}

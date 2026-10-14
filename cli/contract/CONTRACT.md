@@ -1,6 +1,6 @@
 # Agent CLI Contract
 
-**Contract version `1.4.2`**
+**Contract version `1.4.3`**
 
 A conforming tool is a command-line binary that gives an automated agent access to one remote API.
 This document says what such a tool does and why. How to build one is in
@@ -349,7 +349,9 @@ MUST be identical across every tool. An agent that has read it once for any tool
   **paths**, never values; and a complete example configuration file with at least one profile
   that sets more than one value. In a tool that supports profile descriptions (§13.4), the profiles
   aspect MUST also explain `description`. In a tool with any profile-scoped credential (§12.1), the
-  credentials aspect MUST also say which credentials are profile-scoped and what that means.
+  credentials aspect MUST also say which credentials are profile-scoped and what that means. In a
+  tool that supports nested blocks (§13.4 rule 7), every setting MUST be listed with its member path
+  in the file as well as its flat name, and the example file MUST use the nesting.
   `teach config <aspect>` MUST let a reader open one of these alone.
 
 A tool author MUST NOT define topics named `contract`, `flags`, or `config`.
@@ -420,7 +422,7 @@ contact upstream, and it MUST succeed with nothing configured.
 | Member | Rule |
 |---|---|
 | `settings` | Every setting, including unset ones. *Why:* a setting missing from the list is indistinguishable from one the tool does not have |
-| `source` | The exact origin: a flag, a full environment variable name, a pointer into the config file, or `builtin` |
+| `source` | The exact origin: a flag, a full environment variable name, a pointer into the config file, or `builtin`. A pointer names the member at its path, nested blocks included (§13.4 rule 7) |
 | `origin` | Which precedence tier won (§13.2) |
 | `default` | The built-in default, whether or not it is in effect |
 | `profile`, `config_file` | The active profile and config file, or `null` |
@@ -433,7 +435,9 @@ profile-scope source actually used, never a skipped default-scope one. When only
 a source, the entry is `set:false` with `source` and `origin` `builtin`, and its `hint` names the
 skipped source and the profile-scoped ways to supply the credential.
 
-`list-config --schema` returns the JSON Schema of the config file in `data.schema`.
+`list-config --schema` returns the JSON Schema of the config file in `data.schema`. In a tool that
+supports nested blocks, the schema shows each block as a nested object (§13.4 rule 7); `name` in
+`settings` stays the flat setting name.
 
 ### §7.3 `list-profiles`
 
@@ -893,6 +897,10 @@ Each setting resolves independently, first match winning:
 | 6 | `AGENTCLI_<SETTING>` | `family` |
 | 7 | Built-in default | `builtin` |
 
+In a tool that supports nested blocks (§13.4 rule 7), `<setting>` in tiers 4 and 5 is the
+setting's member path, such as `profiles.<profile>.telemetry.otlp.endpoint`; every other tier uses
+the flat name.
+
 Two consequences matter:
 
 - **A profile overrides only what it defines.** A setting the profile leaves out takes the value from
@@ -949,16 +957,17 @@ rejects them under rule 2.
 | Member | Rule |
 |---|---|
 | `config_version` | The file format version. An unknown value is `config` |
-| `default` | Settings that apply unless a profile overrides them |
-| `profiles` | Named partial overrides of `default` |
+| `default` | Settings that apply unless a profile overrides them, or blocks of them in a tool that supports nested blocks (rule 7) |
+| `profiles` | Named partial overrides of `default`, in the same form |
 | `description` | Optional, in `default` and in each profile; supported only by some tools (rule 6) |
 
 Rules:
 
-1. The file MUST be JSON. Member names are lowercase setting names, apart from `description` (rule 6).
+1. The file MUST be JSON. Member names are lowercase setting names, apart from `description` (rule 6)
+   and, in a tool that supports nested blocks, the members of a setting's path (rule 7).
 2. An unrecognised member is `config`. *Why:* a misspelled setting that is silently ignored looks
    exactly like a setting that does not work. A tool that supports `description` (rule 6) treats it
-   as recognised.
+   as recognised. A tool that supports nested blocks (rule 7) applies this rule at every level.
 3. **The file MUST NOT contain a credential value.** A credential member holding a value, rather than
    a path, is `config` at startup. Credentials are referenced only by path: `<name>_file` or
    `env_file`. *Why:* the file can then be read, shared, or committed without leaking anything —
@@ -972,6 +981,87 @@ Rules:
    it is not resolved through §13.2, has no environment variable or flag, and does not appear in
    `list-config`. Its only reader is `list-profiles` (§7.3). A tool that does not support it rejects
    it under rule 2.
+7. A tool MAY accept nested blocks in `default` and in each profile (since 1.4.3), as file syntax for
+   flat settings, under the rules below. A tool that does not support them rejects a block under
+   rule 2, as before.
+
+**Nested blocks (optional, since 1.4.3).** A block is a JSON object, inside `default` or a profile,
+whose members are settings or further blocks. Nesting changes how the file is written, not what a
+setting is: each one keeps a single flat name and resolves through §13.2 like any other.
+
+```json
+{
+  "config_version": 1,
+  "default": {
+    "limit": 25,
+    "telemetry": {
+      "otlp": {
+        "endpoint": "https://otel.example.net:4318",
+        "timeout": "10s",
+        "token_file": "~/.secrets/otlp.token"
+      }
+    }
+  },
+  "profiles": {
+    "work": {
+      "telemetry": { "otlp": { "endpoint": "http://127.0.0.1:4318" } }
+    }
+  }
+}
+```
+
+Here `TELEMETRY_OTLP_ENDPOINT` and `TELEMETRY_OTLP_TIMEOUT` are settings and `TELEMETRY_OTLP_TOKEN` is
+a credential. With `--profile work`, the endpoint comes from `profiles.work` and the timeout and
+token from `default`.
+
+A tool that supports nested blocks MUST follow these rules:
+
+1. **A path names a setting.** The member names along the path, joined with `_` and uppercased, are
+   the setting's name: `telemetry.otlp.endpoint` is `TELEMETRY_OTLP_ENDPOINT`. Its environment
+   variables and flag follow from that name as for any setting (`<TOOL>_TELEMETRY_OTLP_ENDPOINT`,
+   `<TOOL>_TELEMETRY_OTLP_ENDPOINT_<PROFILE>`, `AGENTCLI_TELEMETRY_OTLP_ENDPOINT`, and
+   `--telemetry-otlp-endpoint` where it has a flag). Environment variables and flags are never
+   nested. *Why:* a setting is one name across every tier (§13.2), so the file is the only place the
+   nesting can live.
+2. **No two paths flatten to the same name.** A tool MUST NOT declare two members whose paths join to
+   one name, such as `telemetry.otlp_endpoint` and `telemetry_otlp.endpoint`, nor a path that joins
+   to the name of a flat member, `<name>_file` and `env_file` included. A member is either a block or
+   a value, never both. *Why:* `<TOOL>_<SETTING>` and `list-config` address a setting by its flat
+   name, and two members behind one name would leave both unable to say which one is meant. It also
+   keeps the setting names a closed set, which §13.3 relies on.
+3. **One spelling.** Each setting has exactly one spelling in the file, fixed by the tool's schema:
+   at its path if declared nested, otherwise flat. The other spelling is an unrecognised member
+   (rule 2): with `telemetry.otlp.endpoint` declared, a member `telemetry_otlp_endpoint` is `config`,
+   and with `dataset_ttl` declared flat, `"dataset": {"ttl": "4h"}` is `config`. *Why:* accepting
+   both would need a rule for which wins when both appear, within one section and between a profile
+   and `default`; with one spelling there is nothing to decide, and the schema states it.
+4. **Profiles merge setting by setting, never block by block.** A block in a profile overrides only
+   the settings it contains. The other settings of that block keep their values from the lower
+   tiers, and an empty block changes nothing. *Why:* this is §13.2's rule that a profile overrides
+   only what it defines. Replacing whole blocks would reset a block's other settings whenever a
+   profile sets one of them, which works in testing and fails on the first partial profile.
+5. **An unknown member at any level is `config`,** as rule 2 says for the top level, and so is a
+   block that holds anything other than an object. The error names the member by its full path, such
+   as `profiles.work.telemetry.otlp.endpiont`. *Why:* a misspelling one level down is as silent as
+   one at the top.
+6. **Credentials stay paths.** Rule 3 applies inside a block: a credential declared at a path is
+   referenced only by `<name>_file` at that path (`telemetry.otlp.token_file` for
+   `TELEMETRY_OTLP_TOKEN`), and a value at the path itself (`telemetry.otlp.token`) is `config` at
+   startup, never echoed. Steps 5 and 6 of §12.1 read the member at its path in the profile and in
+   `default`. `env_file` stays a member of `default` or of a profile, never of a block, and its keys
+   stay the flat variable names. *Why:* nesting must not open a place where a value can sit
+   unchecked.
+7. **`list-config` stays flat.** Each entry's `name` is the flat setting name. When the value comes
+   from the file, `source` points at the member's path, in the same form as for a flat member:
+   `config.json#profiles.work.telemetry.otlp.endpoint`. `list-config --schema` shows the nesting:
+   each block is an object schema whose `properties` are its members, with
+   `additionalProperties:false`. *Why:* an agent reasons about a setting by the name every tier shares,
+   and an operator editing the file needs the path; the schema is where the file's shape is published.
+
+A tool that does not support nested blocks needs no change: it already rejects a block as an
+unrecognised member (rule 2), or as an invalid value where the block sits under a setting's name. A
+config file that uses blocks is therefore portable only to tools that declare them in
+`list-config --schema`.
 
 ### §13.5 Settings
 

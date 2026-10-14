@@ -37,20 +37,28 @@ func ProfileSuffix(profile string) string {
 	return strings.ToUpper(strings.ReplaceAll(profile, "-", "_"))
 }
 
-// File is a parsed, validated config file. Credential entries are kept as paths only.
+// File is a parsed, validated config file. Credential entries are kept as paths only. Every section
+// is keyed by flat member names, whatever nesting the file used (contract §13.4 rule 7), so a
+// setting merges across sections one flat key at a time.
 type File struct {
 	Path     string
 	Default  map[string]json.RawMessage
 	Profiles map[string]map[string]json.RawMessage
+	layout   *Layout
 }
 
-// Pointer names a member of the file for provenance, such as "config.json#profiles.work.limit".
+// Pointer names a member of the file for provenance, by its flat key, such as
+// "config.json#profiles.work.limit". A nested member is named at its path:
+// "config.json#profiles.work.telemetry.otlp.endpoint".
 func (f *File) Pointer(profile, key string) string {
-	section := "default"
-	if profile != "" {
-		section = "profiles." + profile
+	return filepath.Base(f.Path) + "#" + sectionName(profile) + "." + f.layout.Path(key)
+}
+
+func sectionName(profile string) string {
+	if profile == "" {
+		return "default"
 	}
-	return filepath.Base(f.Path) + "#" + section + "." + key
+	return "profiles." + profile
 }
 
 // Section returns the members of one section: the named profile, or default when profile is "".
@@ -70,8 +78,8 @@ func (f *File) PathMember(profile, key string) (string, error) {
 	if !ok {
 		return "", nil
 	}
-	var text string
-	if err := json.Unmarshal(raw, &text); err != nil || text == "" {
+	text, err := pathString(raw)
+	if err != nil {
 		return "", fmt.Errorf("%s must be a non-empty path string", f.Pointer(profile, key))
 	}
 	return text, nil
@@ -126,9 +134,19 @@ type rawFile struct {
 	Profiles      map[string]map[string]json.RawMessage `json:"profiles"`
 }
 
-// LoadFile reads and validates a config file. It returns (nil, nil) when the file does not exist
-// and was not required.
+// LoadFile reads and validates a config file whose layout has no nested credentials. It returns
+// (nil, nil) when the file does not exist and was not required.
 func LoadFile(path string, required bool, defs []*Def, credentials []string) (*File, *errs.Error) {
+	layout, err := NewLayout(defs, credentials, nil)
+	if err != nil {
+		return nil, layoutError(err)
+	}
+	return LoadFileWithLayout(path, required, layout)
+}
+
+// LoadFileWithLayout reads and validates a config file against a layout. It returns (nil, nil) when
+// the file does not exist and was not required.
+func LoadFileWithLayout(path string, required bool, layout *Layout) (*File, *errs.Error) {
 	content, err := os.ReadFile(path)
 	if err != nil {
 		if errors.Is(err, fs.ErrNotExist) && !required {
@@ -150,89 +168,105 @@ func LoadFile(path string, required bool, defs []*Def, credentials []string) (*F
 		return nil, fileError(path, "config_version", "The config file %s declares config_version %d; this tool understands 1.", path, *parsed.ConfigVersion)
 	}
 
-	file := &File{Path: path, Default: parsed.Default, Profiles: parsed.Profiles}
-	if err := validateSection(file, "", parsed.Default, defs, credentials); err != nil {
-		return nil, err
+	file := &File{Path: path, layout: layout}
+	if parsed.Default != nil {
+		file.Default = map[string]json.RawMessage{}
+		if err := file.flatten("", nil, layout.root, parsed.Default, file.Default); err != nil {
+			return nil, err
+		}
 	}
 	names := make([]string, 0, len(parsed.Profiles))
 	for name := range parsed.Profiles {
 		names = append(names, name)
 	}
 	sort.Strings(names)
+	if parsed.Profiles != nil {
+		file.Profiles = map[string]map[string]json.RawMessage{}
+	}
 	for _, name := range names {
 		if err := ValidateProfileName(name); err != nil {
 			return nil, fileError(path, "profiles."+name, "The config file declares an invalid profile name: %s.", err.Error())
 		}
-		if err := validateSection(file, name, parsed.Profiles[name], defs, credentials); err != nil {
+		flat := map[string]json.RawMessage{}
+		if err := file.flatten(name, nil, layout.root, parsed.Profiles[name], flat); err != nil {
 			return nil, err
 		}
+		file.Profiles[name] = flat
 	}
 	return file, nil
 }
 
-func validateSection(file *File, profile string, section map[string]json.RawMessage, defs []*Def, credentials []string) *errs.Error {
-	keys := make([]string, 0, len(section))
-	for key := range section {
+// flatten validates the members of one block (the section itself when prefix is empty) and copies
+// each leaf into out under its flat key. Members are visited in sorted order so the first error
+// reported is stable.
+func (f *File) flatten(profile string, prefix []string, node *layoutNode, members map[string]json.RawMessage, out map[string]json.RawMessage) *errs.Error {
+	keys := make([]string, 0, len(members))
+	for key := range members {
 		keys = append(keys, key)
 	}
 	sort.Strings(keys)
 
-	byKey := map[string]*Def{}
-	for _, def := range defs {
-		if def.InFile {
-			byKey[def.FileKey()] = def
-		}
-	}
 	for _, key := range keys {
-		member := strings.TrimPrefix(file.Pointer(profile, key), filepath.Base(file.Path)+"#")
-		if isCredentialValueKey(key, credentials) {
-			// Never echo the value: the member name alone says what is wrong.
-			return fileError(file.Path, member,
-				"The config file sets %s to a value; credentials may only be referenced by path.", key).
-				WithHint(fmt.Sprintf("Replace %s with %s_file=<path to a file holding it>, or use env_file.", key, key))
-		}
-		if key == DescriptionKey {
-			if err := validateDescription(section[key]); err != nil {
-				return fileError(file.Path, member, "The config file member %s is invalid: %s.", member, err.Error()).
-					WithHint(fmt.Sprintf("Set %s to one line of 1 to %d characters saying what the profile is for.",
-						file.Pointer(profile, key), MaxDescriptionLength))
-			}
-			continue
-		}
-		if key == "env_file" || isCredentialFileKey(key, credentials) {
-			if _, err := file.PathMember(profile, key); err != nil {
-				return fileError(file.Path, member, "%s.", err.Error())
-			}
-			continue
-		}
-		def, known := byKey[key]
+		path := append(append([]string{}, prefix...), key)
+		relative := strings.Join(path, ".")
+		member := sectionName(profile) + "." + relative
+		raw := members[key]
+		child, known := node.children[key]
 		if !known {
-			return fileError(file.Path, member, "The config file has an unrecognised member %s.", member).
-				WithHint("Run `list-config --schema` for the members the file accepts.")
+			hint := "Run `list-config --schema` for the members the file accepts."
+			if spelling := f.layout.spellingOf(path); spelling != "" {
+				hint = fmt.Sprintf("This tool spells %s as %s; each setting has one spelling. %s", relative, spelling, hint)
+			}
+			return fileError(f.Path, member, "The config file has an unrecognised member %s.", member).WithHint(hint)
 		}
-		if _, err := parseFileValue(def, section[key]); err != nil {
-			return fileError(file.Path, member, "The config file member %s is invalid: %s.", member, err.Error())
+		if child.children != nil {
+			trimmed := bytes.TrimSpace(raw)
+			var block map[string]json.RawMessage
+			if len(trimmed) == 0 || trimmed[0] != '{' || json.Unmarshal(trimmed, &block) != nil {
+				return fileError(f.Path, member, "The config file member %s must be an object, a block of settings.", member).
+					WithHint("Run `list-config --schema` for the members the file accepts.")
+			}
+			if err := f.flatten(profile, path, child, block, out); err != nil {
+				return err
+			}
+			continue
 		}
+		switch child.kind {
+		case memberCredentialValue:
+			// Never echo the value: the member name alone says what is wrong.
+			return fileError(f.Path, member,
+				"The config file sets %s to a value; credentials may only be referenced by path.", relative).
+				WithHint(fmt.Sprintf("Replace %s with %s_file=<path to a file holding it>, or use env_file.", relative, relative))
+		case memberDescription:
+			if err := validateDescription(raw); err != nil {
+				return fileError(f.Path, member, "The config file member %s is invalid: %s.", member, err.Error()).
+					WithHint(fmt.Sprintf("Set %s to one line of 1 to %d characters saying what the profile is for.",
+						f.Pointer(profile, child.flatKey), MaxDescriptionLength))
+			}
+		case memberEnvFile, memberCredentialFile:
+			if _, err := pathString(raw); err != nil {
+				return fileError(f.Path, member, "%s must be a non-empty path string.", f.Pointer(profile, child.flatKey))
+			}
+		default:
+			if _, err := parseFileValue(child.def, raw); err != nil {
+				return fileError(f.Path, member, "The config file member %s is invalid: %s.", member, err.Error())
+			}
+		}
+		out[child.flatKey] = raw
 	}
 	return nil
 }
 
-func isCredentialValueKey(key string, credentials []string) bool {
-	for _, name := range credentials {
-		if key == strings.ToLower(name) {
-			return true
-		}
+func pathString(raw json.RawMessage) (string, error) {
+	var text string
+	if err := json.Unmarshal(raw, &text); err != nil || text == "" {
+		return "", errors.New("not a non-empty string")
 	}
-	return false
+	return text, nil
 }
 
-func isCredentialFileKey(key string, credentials []string) bool {
-	for _, name := range credentials {
-		if key == strings.ToLower(name)+"_file" {
-			return true
-		}
-	}
-	return false
+func layoutError(err error) *errs.Error {
+	return errs.New(errs.Internal, "The tool declares an invalid config file layout: %s.", err.Error())
 }
 
 func fileError(path, member, format string, args ...any) *errs.Error {

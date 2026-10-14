@@ -744,6 +744,127 @@ run barenum "${P}_TIMEOUT=30" -- list-config
 [ "$(rc barenum)" = "3" ] && ok "C13-17" "a duration without a unit is config" \
                           || bad "C13-17" "${P}_TIMEOUT=30 gave exit $(rc barenum), expected 3"
 
+# Nested blocks (contract 1.4.3, §13.4 rule 7). C13-20 applies to every tool: a block under a name the
+# tool does not declare is an unrecognised member. The rest run only when list-config --schema declares
+# a nested setting, so a tool with a flat file skips them.
+printf '{"default":{"no_such_block_xyz":{"limit":7}}}' >"$WORK/cfg/blockunknown.json"
+run blockunknown -- list-config --config "$WORK/cfg/blockunknown.json"
+[ "$(rc blockunknown)" = "3" ] && ok "C13-20" "a block under an undeclared name is config" \
+                               || bad "C13-20" "an undeclared block gave exit $(rc blockunknown), expected 3"
+
+# Leaves of the default section's schema, as paths; blocks are object schemas with properties.
+JQ_SCHEMA='def deref($r): if type == "object" and ((.["$ref"] // "") | startswith("#/$defs/"))
+                         then $r["$defs"][.["$ref"] | ltrimstr("#/$defs/")] else . end;
+  def isblock: type == "object" and .type == "object" and has("properties");
+  def leaves($r): (.properties // {}) | to_entries[] | .key as $k | (.value | deref($r)) as $v
+    | if ($v | isblock) then ($v | leaves($r) | [$k] + .) else [$k] end;
+  .data.schema as $r | ($r.properties.default // {} | deref($r)) as $section'
+NESTED=$(jq -c "$JQ_SCHEMA"' | [$section | leaves($r) | select(length > 1)]' "$WORK/out/schema.json" 2>/dev/null)
+NESTED_IDS="C7-17 C13-21 C13-22 C13-23 C13-24 C13-25 C13-26"
+if [ -z "$NESTED" ] || [ "$NESTED" = "[]" ]; then
+  for id in $NESTED_IDS; do skip "$id" "no nested setting in list-config --schema"; done
+else
+  # C7-17: names stay flat, and every block is closed.
+  unflat=$(jq -c --slurpfile lc "$WORK/out/lc.json" --argjson nested "$NESTED" '
+      ($lc[0].data.settings | map(.name)) as $names
+    | ($lc[0].data.settings | map(select(has("set")) | .name + "_FILE")) as $credfiles
+    | [$nested[] | (map(ascii_upcase) | join("_")) as $flat
+       | select(($names | index($flat) | not) and ($credfiles | index($flat) | not)) | join(".")]' -n)
+  open_blocks=$(jq -c "$JQ_SCHEMA"' | [$section | .. | objects | select(isblock and .additionalProperties != false)] | length' \
+    "$WORK/out/schema.json" 2>/dev/null)
+  if [ "$unflat" = "[]" ] && [ "$open_blocks" = "0" ]; then
+    ok "C7-17" "every nested member flattens to a list-config name, and every block is closed"
+  else
+    bad "C7-17" "nested members without a flat setting: $unflat; blocks without additionalProperties:false: $open_blocks"
+  fi
+
+  # The first nested setting with a built-in default, and a sibling in the same block if there is one.
+  TARGET=$(jq -c --slurpfile lc "$WORK/out/lc.json" --argjson nested "$NESTED" -n '
+      ($lc[0].data.settings | map(select((has("set") | not) and .default != null) | {key: .name, value: .default}) | from_entries) as $defaults
+    | [$nested[] | select((.[-1] | endswith("_file")) | not)
+       | {path: ., name: (map(ascii_upcase) | join("_"))} | select($defaults[.name] != null) | .default = $defaults[.name]]
+    | if length == 0 then empty else
+        .[0] as $t | $t + {sibling: ([.[1:][] | select(.path[:-1] == $t.path[:-1])][0] // null)} end')
+  if [ -z "$TARGET" ]; then
+    for id in C13-21 C13-22 C13-23 C13-24 C13-25; do skip "$id" "no nested setting has a built-in default to write"; done
+  else
+    T_NAME=$(jq -r '.name' <<<"$TARGET")
+    T_DOTTED=$(jq -r '.path | join(".")' <<<"$TARGET")
+    T_ENVVAL=$(jq -r '.default | tostring' <<<"$TARGET")
+    jq -n --argjson t "$TARGET" '{} | setpath(["default"] + $t.path; $t.default)' >"$WORK/cfg/nested.json"
+    nested_row() { jq -c --arg n "$T_NAME" '.data.settings[] | select(.name == $n)' "$WORK/out/$1.json" 2>/dev/null; }
+
+    run nestedfile -- list-config --config "$WORK/cfg/nested.json"
+    if [ "$(rc nestedfile)" = "0" ] &&
+       jq -e --arg d "$T_DOTTED" '.origin == "file_default" and (.source | endswith("#default." + $d))' <<<"$(nested_row nestedfile)" >/dev/null 2>&1; then
+      ok "C13-21" "$T_DOTTED resolves as $T_NAME, file_default, with a source at its path"
+    else
+      bad "C13-21" "$T_DOTTED did not resolve as $T_NAME from file_default at its path: $(nested_row nestedfile | head -c 300) (exit $(rc nestedfile))"
+    fi
+
+    run nestedenv "${P}_${T_NAME}=$T_ENVVAL" -- list-config --config "$WORK/cfg/nested.json"
+    if jq -e --arg v "${P}_${T_NAME}" '.origin == "env_default" and .source == $v' <<<"$(nested_row nestedenv)" >/dev/null 2>&1; then
+      ok "C13-22" "the flat variable ${P}_${T_NAME} overrides the nested member"
+    else
+      bad "C13-22" "${P}_${T_NAME} did not win over the nested member: $(nested_row nestedenv | head -c 300)"
+    fi
+
+    if jq -e '.sibling != null' <<<"$TARGET" >/dev/null; then
+      jq -n --argjson t "$TARGET" '{} | setpath(["default"] + $t.path; $t.default) | setpath(["default"] + $t.sibling.path; $t.sibling.default)
+                                     | setpath(["profiles","probe"] + $t.path; $t.default)' >"$WORK/cfg/nestedprof.json"
+      run nestedprof -- list-config --config "$WORK/cfg/nestedprof.json" --profile probe
+      S_NAME=$(jq -r '.sibling.name' <<<"$TARGET")
+      if [ "$(lc_origin nestedprof "$T_NAME")" = "file_profile" ] && [ "$(lc_origin nestedprof "$S_NAME")" = "file_default" ]; then
+        ok "C13-23" "a profile block overrides only the members it sets ($S_NAME stays file_default)"
+      else
+        bad "C13-23" "profile block merge: $T_NAME '$(lc_origin nestedprof "$T_NAME")', $S_NAME '$(lc_origin nestedprof "$S_NAME")'; want file_profile, file_default"
+      fi
+    else
+      jq -n --argjson t "$TARGET" '{} | setpath(["default"] + $t.path; $t.default) | setpath(["profiles","probe"] + $t.path[:-1]; {})' \
+        >"$WORK/cfg/nestedprof.json"
+      run nestedprof -- list-config --config "$WORK/cfg/nestedprof.json" --profile probe
+      if [ "$(lc_origin nestedprof "$T_NAME")" = "file_default" ]; then
+        ok "C13-23" "an empty block in a profile leaves $T_NAME at file_default"
+      else
+        bad "C13-23" "an empty profile block changed $T_NAME (origin '$(lc_origin nestedprof "$T_NAME")', exit $(rc nestedprof))"
+      fi
+    fi
+
+    jq -n --argjson t "$TARGET" '{} | setpath(["default"] + $t.path[:-1] + ["no_such_member_xyz"]; 1)' >"$WORK/cfg/nestedunknown.json"
+    U_DOTTED=$(jq -r '.path[:-1] + ["no_such_member_xyz"] | join(".")' <<<"$TARGET")
+    run nestedunknown -- list-config --config "$WORK/cfg/nestedunknown.json"
+    if [ "$(rc nestedunknown)" = "3" ] && jq -e --arg u "$U_DOTTED" '.error | tostring | contains($u)' "$WORK/out/nestedunknown.json" >/dev/null 2>&1; then
+      ok "C13-24" "an unknown member inside a block is config and named by its full path"
+    else
+      bad "C13-24" "unknown member $U_DOTTED gave exit $(rc nestedunknown), or the error does not name its path"
+    fi
+
+    jq -n --argjson t "$TARGET" '{default: {($t.name | ascii_downcase): $t.default}}' >"$WORK/cfg/nestedflat.json"
+    jq -n --argjson t "$TARGET" '{default: {($t.path[0]): 5}}' >"$WORK/cfg/nestedscalar.json"
+    run nestedflat -- list-config --config "$WORK/cfg/nestedflat.json"
+    run nestedscalar -- list-config --config "$WORK/cfg/nestedscalar.json"
+    if [ "$(rc nestedflat)" = "3" ] && [ "$(rc nestedscalar)" = "3" ]; then
+      ok "C13-25" "the flat spelling of a nested setting, and a block given as a number, are config"
+    else
+      bad "C13-25" "flat spelling gave exit $(rc nestedflat), block as a number gave exit $(rc nestedscalar); expected 3 and 3"
+    fi
+  fi
+
+  CREDPATH=$(jq -c '[.[] | select(.[-1] | endswith("_file"))][0] // empty | .[-1] |= rtrimstr("_file")' <<<"$NESTED")
+  if [ -z "$CREDPATH" ]; then
+    skip "C13-26" "no nested credential file member in list-config --schema"
+  else
+    NESTED_INLINE="nestedcred${RANDOM}${RANDOM}"
+    jq -n --argjson p "$CREDPATH" --arg v "$NESTED_INLINE" '{} | setpath(["default"] + $p; $v)' >"$WORK/cfg/nestedinline.json"
+    run nestedinline -- list-config --config "$WORK/cfg/nestedinline.json"
+    if [ "$(rc nestedinline)" = "3" ] && ! grep -q "$NESTED_INLINE" "$WORK/out/nestedinline.json" "$WORK/out/nestedinline.err"; then
+      ok "C13-26" "a credential value at a nested path is config, value not echoed"
+    else
+      bad "C13-26" "a nested credential value gave exit $(rc nestedinline) or the value was echoed"
+    fi
+  fi
+fi
+
 # ---------------------------------------------------------------------------- §14, §15, §16, §17, §18
 
 section "§14 Determinism, §15 --human, §16 MCP, §17 reserved names, §18 versioning"

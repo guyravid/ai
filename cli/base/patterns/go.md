@@ -135,6 +135,15 @@ Load the config file with `json.Decoder.DisallowUnknownFields()` on the outer st
 default sections are `map[string]json.RawMessage`, so check their keys against the known settings
 yourself. Reject a credential member that is not a `_file` reference during the load.
 
+For nested blocks (contract 1.4.3), give the setting definition a path (`FilePath []string`, nil for a
+flat member) and build a tree of declared members from the definitions and credentials once, failing
+on a path that does not flatten to its name or on two paths that flatten to one. While loading,
+walk each section against that tree: a block decodes to another `map[string]json.RawMessage` and
+recurses (anything not starting with `{` is `config`), and each leaf is copied into a flat map under
+its flat key. Store only the flat maps, so resolution and `<name>_file` lookup are unchanged; keep the
+flat-key-to-path map to build `source` pointers and to nest the schema. `tools/telegram/internal/config`
+(`layout.go`) is a working version.
+
 Durations: `time.ParseDuration`. Sizes need a small parser for `KB MB GB KiB MiB GiB`; reject bare
 numbers.
 
