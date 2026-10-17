@@ -35,6 +35,30 @@ globally and no symlinks:
 A subagent that another agent or bundle also uses is not part of a bundle; give it its own
 `agents/<agent-name>/` directory instead.
 
+#### Starting a bundle with plain `claude`
+To make a plain `claude` in the bundle's directory start as the main agent, set
+`"agent": "<bundle-name>"` in `<bundle>/.claude/settings.json`. This is the same as
+`claude --agent <bundle-name>`: the agent's prompt, tool allowlist and model apply. Prefer it to
+putting the agent's prompt in the bundle's `CLAUDE.md`, which only adds context, ignores the
+`tools` allowlist, duplicates the agent file, and can't be switched off per session.
+
+The bundle's directory then always starts the agent:
+
+| How it's started | Result |
+|---|---|
+| `claude` in the bundle | Runs as the main agent |
+| `claude --setting-sources user` | Normal Claude Code session, project settings skipped |
+| `claude --settings '{"agent":"general-purpose"}'` | Normal session, project settings kept |
+
+To work on a bundle's agents:
+- **Open from `agents/`** (recommended). Project settings come from the directory the session
+  starts in, so the `agent` setting doesn't apply, and these guidelines load.
+- **Stay in the bundle and skip project settings** with `claude --setting-sources user`. This also
+  skips the bundle's permissions, which is fine for editing.
+- **Use an alias** if you do this often, e.g. `alias claude-dev='claude --setting-sources user'`.
+
+Document the same in the bundle's `README.md`.
+
 ### Agent Definition File (`AGENT.md`)
 The definition file is the system prompt. It must include:
 
