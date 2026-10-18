@@ -1,0 +1,22 @@
+{
+  "status": {
+    "watchUsedPct": 70,
+    "atRiskUsedPct": 90,
+    "watchProjectedPct": 90,
+    "atRiskProjectedPct": 100
+  },
+  "projection": {
+    "minElapsedDays": 1
+  },
+  "risk": {
+    "windowDays": 30,
+    "minObservedDays": 1,
+    "timeoutSlackFactor": 3,
+    "minSuggestedTimeoutMinutes": 10,
+    "maxDailyScheduleRuns": 1,
+    "suggestedArtifactRetentionDays": 7,
+    "cacheWarnPctOfLimit": 80,
+    "docsOnlyPatterns": ["**/*.md", "docs/**", "LICENSE*", ".gitignore", ".github/ISSUE_TEMPLATE/**", "*.txt"],
+    "maxRunsInspected": 300
+  }
+}

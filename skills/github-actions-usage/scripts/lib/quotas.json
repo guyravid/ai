@@ -1,0 +1,61 @@
+{
+  "readDate": "2026-10-17",
+  "source": "references/quotas.md",
+  "sources": [
+    { "label": "GitHub Actions billing", "url": "https://docs.github.com/en/billing/concepts/product-billing/github-actions" },
+    { "label": "Actions runner pricing", "url": "https://docs.github.com/en/billing/reference/actions-runner-pricing" },
+    { "label": "Billing cycles", "url": "https://docs.github.com/en/billing/concepts/billing-cycles" },
+    { "label": "Billing usage REST API", "url": "https://docs.github.com/en/rest/billing/usage" },
+    { "label": "Actions limits", "url": "https://docs.github.com/en/actions/reference/limits" },
+    { "label": "Dependency caching", "url": "https://docs.github.com/en/actions/reference/workflows-and-actions/dependency-caching" }
+  ],
+  "multiplierMode": "billing-api-then-cost-weighted",
+  "baselineSku": "actions_linux",
+  "plans": {
+    "free": { "includedMinutes": 2000, "artifactStorageGB": 0.48828125, "cacheStoragePerRepoGB": 10 },
+    "pro": { "includedMinutes": 3000, "artifactStorageGB": 0.9765625, "cacheStoragePerRepoGB": 10 },
+    "free_org": { "includedMinutes": 2000, "artifactStorageGB": 0.48828125, "cacheStoragePerRepoGB": 10 },
+    "team": { "includedMinutes": 3000, "artifactStorageGB": 2, "cacheStoragePerRepoGB": 10 },
+    "enterprise": { "includedMinutes": 50000, "artifactStorageGB": 50, "cacheStoragePerRepoGB": 10 }
+  },
+  "standardRunnerRates": {
+    "actions_linux_slim": 0.002,
+    "actions_linux": 0.006,
+    "actions_linux_arm": 0.005,
+    "actions_windows": 0.010,
+    "actions_windows_arm": 0.010,
+    "actions_macos": 0.062
+  },
+  "largerRunnerRates": {
+    "linux_2_core_advanced": 0.006, "linux_4_core": 0.012, "linux_8_core": 0.022, "linux_16_core": 0.042,
+    "linux_32_core": 0.082, "linux_64_core": 0.162, "linux_96_core": 0.252,
+    "windows_4_core": 0.022, "windows_8_core": 0.042, "windows_16_core": 0.082, "windows_32_core": 0.162,
+    "windows_64_core": 0.322, "windows_96_core": 0.552, "macos_l": 0.077,
+    "linux_2_core_arm": 0.005, "linux_4_core_arm": 0.008, "linux_8_core_arm": 0.014, "linux_16_core_arm": 0.026,
+    "linux_32_core_arm": 0.050, "linux_64_core_arm": 0.098,
+    "windows_2_core_arm": 0.008, "windows_4_core_arm": 0.014, "windows_8_core_arm": 0.026,
+    "windows_16_core_arm": 0.050, "windows_32_core_arm": 0.098, "windows_64_core_arm": 0.194,
+    "macos_xl": 0.102, "linux_4_core_gpu": 0.052, "windows_4_core_gpu": 0.102
+  },
+  "billingApiSkuToSku": {
+    "Actions Linux": "actions_linux", "Actions Linux Slim": "actions_linux_slim", "Actions Linux ARM": "actions_linux_arm",
+    "Actions Windows": "actions_windows", "Actions Windows ARM": "actions_windows_arm", "Actions macOS 3-core": "actions_macos"
+  },
+  "skuOs": {
+    "actions_linux_slim": "Linux", "actions_linux": "Linux", "actions_linux_arm": "Linux",
+    "actions_windows": "Windows", "actions_windows_arm": "Windows", "actions_macos": "macOS"
+  },
+  "labelToSku": {
+    "ubuntu-slim": "actions_linux_slim",
+    "ubuntu-latest": "actions_linux", "ubuntu-24.04": "actions_linux", "ubuntu-22.04": "actions_linux", "ubuntu-26.04": "actions_linux",
+    "ubuntu-24.04-arm": "actions_linux_arm", "ubuntu-22.04-arm": "actions_linux_arm", "ubuntu-26.04-arm": "actions_linux_arm",
+    "windows-latest": "actions_windows", "windows-2025": "actions_windows", "windows-2022": "actions_windows",
+    "windows-11-arm": "actions_windows_arm", "windows-11-vs2026-arm": "actions_windows_arm",
+    "macos-latest": "actions_macos", "macos-14": "actions_macos", "macos-15": "actions_macos", "macos-26": "actions_macos",
+    "xcode-27": "actions_macos", "macos-15-intel": "actions_macos", "macos-26-intel": "actions_macos"
+  },
+  "rounding": { "jobMinutes": "ceil-per-job" },
+  "cycle": { "type": "calendar-month", "timezone": "UTC" },
+  "storage": { "bytesPerGB": 1073741824, "cacheEvictionUnusedDays": 7, "artifactRetentionDefaultDays": 90, "cacheRetentionDefaultDays": 7 },
+  "workflowDefaults": { "jobTimeoutMinutes": 360, "jobExecutionLimitMinutes": 360, "minScheduleIntervalMinutes": 5 }
+}

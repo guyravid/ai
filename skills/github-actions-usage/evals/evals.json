@@ -1,0 +1,23 @@
+{
+  "skill_name": "github-actions-usage",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "how close am I to my github actions free minutes this month? will I run out before the reset?",
+      "expected_output": "Runs scripts/usage.mjs; shows the summary table (minutes cost-weighted and raw, artifact storage, cache) with %, projection and status, minutes by OS, per-repo/workflow/job breakdown; every number tagged [billing API]/[run timing]/[estimate]; answers the run-out question from the projection.",
+      "files": []
+    },
+    {
+      "id": 2,
+      "prompt": "bellboard's CI feels expensive with all the macOS jobs - what in guyravid/bellboard's workflows is burning my Actions minutes and what should I change? my checkout is at ~/Projects/bellboard",
+      "expected_output": "Runs scripts/risk.mjs guyravid/bellboard --local ~/Projects/bellboard; lists findings with min/run, min/month, concrete YAML change and saving; notes the unpushed local ci.yml change; does not edit any workflow.",
+      "files": []
+    },
+    {
+      "id": 3,
+      "prompt": "can you check which of my repos is risking my actions quota?",
+      "expected_output": "Runs scripts/risk.mjs --list (and optionally usage.mjs), shows the repo list, and asks the user which repo to review instead of picking one.",
+      "files": []
+    }
+  ]
+}
